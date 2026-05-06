@@ -1,0 +1,147 @@
+{
+  "name": "ai-engineer-coach",
+  "displayName": "AI Engineer Coach",
+  "description": "Analyze your AI coding assistant usage across VS Code, Xcode, Claude, Codex, and OpenCode. Read-only, zero telemetry.",
+  "version": "0.1.0",
+  "publisher": "ai-engineer-coach",
+  "author": {
+    "name": "Sanjay Singh, Joy Distelbrink, Tamas Boncz, Aymen Furter"
+  },
+  "license": "MIT",
+  "icon": "assets/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/microsoft/AI-Engineering-Coach.git"
+  },
+  "bugs": {
+    "url": "https://github.com/microsoft/AI-Engineering-Coach/issues"
+  },
+  "engines": {
+    "vscode": "^1.118.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "copilot",
+    "analytics",
+    "harness",
+    "claude",
+    "codex",
+    "opencode",
+    "productivity",
+    "github"
+  ],
+  "activationEvents": [
+    "onCommand:aiEngineerCoach.open",
+    "onCommand:aiEngineerCoach.reload",
+    "onCommand:aiEngineerCoach.reviewLocalRules",
+    "onView:aiEngineerCoach.welcome"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "aiEngineerCoach.open",
+        "title": "AI Engineer Coach: Open Dashboard",
+        "icon": "$(graph)"
+      },
+      {
+        "command": "aiEngineerCoach.reload",
+        "title": "AI Engineer Coach: Reload Data",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "aiEngineerCoach.reviewLocalRules",
+        "title": "AI Engineer Coach: Review Local Rule Approvals",
+        "icon": "$(shield)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "aiEngineerCoach",
+          "title": "AI Engineer Coach",
+          "icon": "$(graph)"
+        }
+      ]
+    },
+    "views": {
+      "aiEngineerCoach": [
+        {
+          "id": "aiEngineerCoach.welcome",
+          "name": "Dashboard",
+          "type": "webview"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "lint": "eslint src/",
+    "bench": "vitest bench",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "analyze:data-inventory": "npx tsx scripts/data-inventory.ts",
+    "analyze:token-inventory": "npx tsx scripts/token-inventory.ts --save",
+    "analyze:context-composition": "npx tsx scripts/explore-context-composition.ts",
+    "analyze:e2e-real-data": "npx tsx scripts/e2e-real-data.ts",
+    "analyze:catalog-fetch": "node scripts/test-catalog-fetch.mjs",
+    "smoke-test": "node scripts/smoke-test.mjs",
+    "package": "node scripts/package-readme-swap.mjs",
+    "spellcheck": "cspell \"src/**/*.ts\" \"docs/**/*.md\" \"*.md\"",
+    "knip": "knip",
+    "typecheck": "tsc --noEmit",
+    "check": "npm run typecheck && npm run lint && npm run spellcheck && npm run knip && npm run test",
+    "check-size": "node scripts/check-bundle-size.mjs",
+    "test:e2e": "npx playwright test",
+    "lockfile-lint": "lockfile-lint",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "*.ts": [
+      "eslint --fix",
+      "cspell --no-must-find-files"
+    ],
+    "*.md": [
+      "cspell --no-must-find-files"
+    ]
+  },
+  "engineStrict": true,
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@playwright/test": "1.59.1",
+    "@types/node": "25.6.0",
+    "@types/vscode": "1.118.0",
+    "@vitest/coverage-v8": "4.1.5",
+    "@vscode/vsce": "3.9.1",
+    "cspell": "10.0.0",
+    "esbuild": "0.28.0",
+    "eslint": "10.3.0",
+    "eslint-plugin-import-x": "4.16.2",
+    "eslint-plugin-no-unsanitized": "4.1.5",
+    "eslint-plugin-unicorn": "64.0.0",
+    "husky": "9.1.7",
+    "jsdom": "29.1.1",
+    "knip": "6.11.0",
+    "lint-staged": "16.4.0",
+    "lockfile-lint": "5.0.0",
+    "preact-render-to-string": "6.6.7",
+    "serve": "14.2.6",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.59.1",
+    "vitest": "4.1.5"
+  },
+  "dependencies": {
+    "chart.js": "4.5.1",
+    "chartjs-chart-treemap": "3.1.0",
+    "htm": "3.1.1",
+    "leo-profanity": "1.9.0",
+    "preact": "10.29.1",
+    "zod": "4.4.3"
+  }
+}

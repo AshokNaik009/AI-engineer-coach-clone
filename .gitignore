@@ -1,0 +1,17 @@
+node_modules/
+dist/
+*.vsix
+.vscode-test/
+.DS_Store
+**/.DS_Store
+docs/public/
+docs/.hugo_build.lock
+docs/ai-engineer-coach.pdf
+docs/security-audit.md
+.husky/pre-commit
+test-results/.last-run.json
+README.github.md
+PROPOSED_FIXES.md
+local/
+test_output.txt
+scripts/verify-counts.ts

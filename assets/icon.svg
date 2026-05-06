@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a1a2e"/>
+      <stop offset="100%" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#3794ff"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#2b7fff"/>
+      <stop offset="100%" stop-color="#79c0ff"/>
+    </linearGradient>
+    <linearGradient id="bar3" x1="0%" y1="100%" x2="0%" y2="0%">
+      <stop offset="0%" stop-color="#1b6fef"/>
+      <stop offset="100%" stop-color="#58a6ff"/>
+    </linearGradient>
+    <linearGradient id="line" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#3fb950"/>
+      <stop offset="100%" stop-color="#73c991"/>
+    </linearGradient>
+  </defs>
+  <!-- Background rounded rectangle -->
+  <rect width="128" height="128" rx="24" fill="url(#bg)"/>
+  <!-- Subtle grid lines -->
+  <line x1="20" y1="50" x2="108" y2="50" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <line x1="20" y1="65" x2="108" y2="65" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <line x1="20" y1="80" x2="108" y2="80" stroke="#ffffff" stroke-opacity="0.04" stroke-width="1"/>
+  <!-- Bar chart -->
+  <rect x="24" y="68" width="14" height="28" rx="3" fill="url(#bar1)" opacity="0.9"/>
+  <rect x="44" y="48" width="14" height="48" rx="3" fill="url(#bar2)" opacity="0.9"/>
+  <rect x="64" y="56" width="14" height="40" rx="3" fill="url(#bar1)" opacity="0.9"/>
+  <rect x="84" y="38" width="14" height="58" rx="3" fill="url(#bar3)" opacity="0.9"/>
+  <!-- Trend line -->
+  <polyline points="31,64 51,42 71,50 91,32" fill="none" stroke="url(#line)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Trend dots -->
+  <circle cx="31" cy="64" r="3.5" fill="#3fb950"/>
+  <circle cx="51" cy="42" r="3.5" fill="#3fb950"/>
+  <circle cx="71" cy="50" r="3.5" fill="#3fb950"/>
+  <circle cx="91" cy="32" r="3.5" fill="#73c991"/>
+  <!-- Copilot sparkle - top right -->
+  <g transform="translate(100, 24)" fill="#79c0ff" opacity="0.85">
+    <path d="M0,-8 L2,-2 L8,0 L2,2 L0,8 L-2,2 L-8,0 L-2,-2 Z"/>
+  </g>
+  <!-- Small sparkle -->
+  <g transform="translate(108, 40)" fill="#58a6ff" opacity="0.5">
+    <path d="M0,-4 L1,-1 L4,0 L1,1 L0,4 L-1,1 L-4,0 L-1,-1 Z"/>
+  </g>
+</svg>

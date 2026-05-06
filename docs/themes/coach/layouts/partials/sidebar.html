@@ -1,0 +1,38 @@
+<aside class="sidebar">
+  {{ $currentPage := . }}
+
+  <div class="sidebar__section">
+    <div class="sidebar__heading">Getting Started</div>
+    <a href="{{ "getting-started/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/getting-started/" }} sidebar__link--active{{ end }}">Overview</a>
+    <a href="{{ "getting-started/installation/" | relURL }}" class="sidebar__link sidebar__link--child{{ if eq .RelPermalink "/getting-started/installation/" }} sidebar__link--active{{ end }}">Installation</a>
+    <a href="{{ "getting-started/supported-tools/" | relURL }}" class="sidebar__link sidebar__link--child{{ if eq .RelPermalink "/getting-started/supported-tools/" }} sidebar__link--active{{ end }}">Supported Tools</a>
+  </div>
+
+  <div class="sidebar__section">
+    <div class="sidebar__heading">Observe</div>
+    <a href="{{ "observe/dashboard/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/observe/dashboard/" }} sidebar__link--active{{ end }}">Dashboard</a>
+    <a href="{{ "observe/timeline/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/observe/timeline/" }} sidebar__link--active{{ end }}">Timeline</a>
+  </div>
+
+  <div class="sidebar__section">
+    <div class="sidebar__heading">Measure</div>
+    <a href="{{ "measure/output/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/measure/output/" }} sidebar__link--active{{ end }}">Output</a>
+    <a href="{{ "measure/burndown/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/measure/burndown/" }} sidebar__link--active{{ end }}">Burndown</a>
+    <a href="{{ "measure/patterns/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/measure/patterns/" }} sidebar__link--active{{ end }}">Activity Patterns</a>
+  </div>
+
+  <div class="sidebar__section">
+    <div class="sidebar__heading">Improve</div>
+    <a href="{{ "improve/anti-patterns/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/improve/anti-patterns/" }} sidebar__link--active{{ end }}">Anti-Patterns</a>
+    <a href="{{ "improve/skill-finder/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/improve/skill-finder/" }} sidebar__link--active{{ end }}">Skill Finder</a>
+    <a href="{{ "improve/context-health/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/improve/context-health/" }} sidebar__link--active{{ end }}">Context Health</a>
+  </div>
+
+  <div class="sidebar__section">
+    <div class="sidebar__heading">Level Up</div>
+    <a href="{{ "level-up/learning/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/level-up/learning/" }} sidebar__link--active{{ end }}">Learning Center</a>
+    <a href="{{ "level-up/achievements/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/level-up/achievements/" }} sidebar__link--active{{ end }}">Achievements</a>
+    <a href="{{ "level-up/sdlc/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/level-up/sdlc/" }} sidebar__link--active{{ end }}">Agentic SDLC</a>
+    <a href="{{ "level-up/share/" | relURL }}" class="sidebar__link{{ if eq .RelPermalink "/level-up/share/" }} sidebar__link--active{{ end }}">Share</a>
+  </div>
+</aside>

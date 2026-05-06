@@ -1,0 +1,35 @@
+---
+title: "Dashboard"
+weight: 10
+description: "Your AI-assisted development overview at a glance"
+---
+
+# Dashboard
+
+The Dashboard is the landing page of AI Engineer Coach. It brings together the most important metrics and recommendations into a single view.
+
+![AI Engineer Coach Dashboard](/screenshots/screen-dashboard.png)
+
+## Practice Scores
+
+Four score cards are displayed at the top of the dashboard, each computed from the anti-pattern detection system:
+
+| Score | What it measures |
+|---|---|
+| **Prompt Quality** | How well you provide context to the AI (file references, open editors, specificity) |
+| **Session Hygiene** | Whether you start fresh sessions, avoid overly long conversations, and use devcontainers |
+| **Code Review** | How carefully you review, validate, and sandbox AI-generated output |
+| **Tool Mastery** | How broadly you use available AI features (slash commands, plan mode, model selection) |
+
+Each score ranges from 0 to 100 and includes week-over-week and month-over-month trend indicators. Clicking a card navigates to the detailed Anti-Patterns view for that category.
+
+## Skill Finder
+
+The dashboard includes an inline preview of the Skill Finder. It scans your prompt history for repeated patterns and surfaces two types of findings:
+
+- **Custom Opportunities** -- Repeated prompts that could be turned into reusable skills or instructions
+- **Community Matches** -- Matching picks from the community-maintained skill catalog
+
+## Daily Activity
+
+A bar chart shows requests, sessions, lines of code, and active workspaces over the selected time range. Tabs let you switch between these metrics. Below the chart, donut charts break down activity by workspace and by harness (VS Code, Claude Code, etc.).

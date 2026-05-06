@@ -1,0 +1,54 @@
+baseURL        = "https://microsoft.github.io/ai-engineer-coach/"
+languageCode   = "en-us"
+title          = "AI Engineer Coach"
+theme          = "coach"
+enableGitInfo  = true
+canonifyURLs   = true
+
+[params]
+  description = "Analyze and improve your AI-assisted development workflow"
+  version     = "0.1.0"
+  github      = "https://github.com/microsoft/ai-engineer-coach"
+
+[markup]
+  [markup.highlight]
+    style       = "monokai"
+    lineNos     = false
+    noClasses   = true
+  [markup.goldmark]
+    [markup.goldmark.renderer]
+      unsafe = true
+    [markup.goldmark.parser.attribute]
+      block = true
+
+[menu]
+  [[menu.main]]
+    identifier = "getting-started"
+    name       = "Getting Started"
+    url        = "/getting-started/"
+    weight     = 10
+  [[menu.main]]
+    identifier = "features"
+    name       = "Features"
+    url        = "/features/"
+    weight     = 20
+  [[menu.main]]
+    identifier = "observe"
+    name       = "Observe"
+    url        = "/observe/"
+    weight     = 30
+  [[menu.main]]
+    identifier = "measure"
+    name       = "Measure"
+    url        = "/measure/"
+    weight     = 40
+  [[menu.main]]
+    identifier = "improve"
+    name       = "Improve"
+    url        = "/improve/"
+    weight     = 50
+  [[menu.main]]
+    identifier = "level-up"
+    name       = "Level Up"
+    url        = "/level-up/"
+    weight     = 60

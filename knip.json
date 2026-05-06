@@ -1,0 +1,25 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "entry": [
+    "src/extension.ts",
+    "src/webview/app.ts",
+    "src/core/warm-up-worker.ts",
+    "src/core/parse-worker.ts",
+    "src/core/cache-write-worker.ts",
+    "src/core/parser.bench.ts"
+  ],
+  "project": ["src/**/*.ts"],
+  "ignore": [
+    "src/webview/page-insights.ts",
+    "src/webview/page-rule-editor.ts",
+    "src/webview/page-workflows.ts",
+    "src/webview/vibe-roles.ts"
+  ],
+  "ignoreDependencies": ["@vscode/vsce", "lint-staged", "serve"],
+  "ignoreBinaries": ["tsx"],
+  "rules": {
+    "exports": "off",
+    "types": "off",
+    "enumMembers": "off"
+  }
+}

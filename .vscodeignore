@@ -1,0 +1,36 @@
+# Source & build config
+src/**
+scripts/**
+tests/**
+docs/**
+esbuild.mjs
+tsconfig.json
+vitest.config.mts
+eslint.config.mjs
+
+# Dev state
+.vscode/**
+.github/**
+.git/**
+.gitignore
+.eslintignore
+
+# Artifacts
+**/*.test.ts
+**/*.test.js
+**/*.map
+*.vsix
+dist/**/*.map
+
+# Docs scaffolding (only publish README + LICENSE + dist)
+README.github.md
+SECURITY.md
+
+# Benchmark / perf outputs
+benchmark-*.json
+
+# Runtime deps are bundled into dist/ by esbuild — ship the bundle, not node_modules
+node_modules/**
+
+# Local manual-test rules (project-layer, for exercising the trust gate in dev)
+.ai-engineer-coach/**
