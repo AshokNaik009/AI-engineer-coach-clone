@@ -53,7 +53,7 @@ AI Engineer Coach reads your local AI session logs and turns them into actionabl
 ## Quick Start
 
 ```bash
-git clone https://github.com/microsoft/ai-engineer-coach.git
+git clone https://github.com/microsoft/ai-engineering-coach.git
 cd ai-engineer-coach
 npm install
 npm run package
