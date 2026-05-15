@@ -331,6 +331,48 @@
   margin-bottom: 16px;
 }
 
+
+.share-social {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.share-social-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.btn-social {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--card-bg);
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.btn-social:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.btn-social-x { border-color: #536471; }
+.btn-social-x:hover { background: #1d9bf0; color: #fff; border-color: #1d9bf0; }
+.btn-social-linkedin { border-color: #0a66c2; }
+.btn-social-linkedin:hover { background: #0a66c2; color: #fff; }
+.btn-social-reddit { border-color: #ff4500; }
+.btn-social-reddit:hover { background: #ff4500; color: #fff; }
+.btn-social-hn { border-color: #ff6600; }
+.btn-social-hn:hover { background: #ff6600; color: #fff; }
+
 .share-hint {
   text-align: center;
   font-size: 12px;
