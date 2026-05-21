@@ -9,7 +9,7 @@ import { execSync } from "child_process";
 renameSync("README.md", "README.github.md");
 copyFileSync("README.extension.md", "README.md");
 try {
-  execSync("vsce package --allow-missing-repository", { stdio: "inherit" });
+  execSync("vsce package --allow-missing-repository --no-dependencies", { stdio: "inherit" });
 } finally {
   renameSync("README.github.md", "README.md");
 }
