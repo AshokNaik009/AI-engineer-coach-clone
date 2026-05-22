@@ -12,6 +12,8 @@ The `@aicoach` chat participant gives you conversational access to all AI Engine
 
 Before using `@aicoach`, open the AI Engineer Coach sidebar at least once to load your session data.
 
+> **Note:** When you use `@aicoach`, your question and the results returned by AI Engineer Coach tools are sent to the selected VS Code chat model so it can synthesize a response. The underlying coaching data is gathered locally, but the final chat answer is not produced purely through local processing.
+
 Type `@aicoach` in any VS Code chat panel followed by your question:
 
 ```
