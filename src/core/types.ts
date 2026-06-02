@@ -11,3 +11,4 @@ export * from './types/config-types';
 export * from './types/context-types';
 export * from './types/rule-types';
 export * from './types/rpc-types';
+export * from './types/prompt-studio-types';

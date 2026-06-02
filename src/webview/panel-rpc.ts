@@ -35,7 +35,9 @@ import {
   serializeCalibration,
 } from '../core/metric-engine';
 import { compileNaturalLanguageRule } from '../core/rule-compiler';
-import type { SessionRequest, Session } from '../core/types';
+import type { SessionRequest, Session, StudioInput, StudioIssue, StudioProfile, StudioRecentPrompt } from '../core/types';
+import { diagnosePrompt, assembleProfile, buildCost } from '../core/prompt-studio';
+import { improvePromptViaClaude } from '../core/claude-cli';
 import { errorResult, isString, isNumber, isOptionalString, isRecord } from './panel-shared';
 import { DSL_CHEATSHEET } from './dsl-cheatsheet';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
@@ -1262,7 +1264,107 @@ Explain why this session triggered the rule.`;
       })),
     };
   },
+
+  /* ---- Prompt Studio ---- */
+  promptStudioDiagnose: (a, _p, params) => {
+    const raw = isRecord(params?.input) ? params.input : {};
+    const text = (isString(raw.text) ? raw.text : '').slice(0, MAX_STUDIO_PROMPT_CHARS);
+    if (!text.trim()) return errorResult('Empty prompt');
+
+    const input: StudioInput = {
+      text,
+      agentMode: isString(raw.agentMode) ? raw.agentMode : undefined,
+      modelId: isString(raw.modelId) ? raw.modelId : undefined,
+      slashCommand: isString(raw.slashCommand) ? raw.slashCommand : undefined,
+      referencedFileCount: isNumber(raw.referencedFileCount) ? raw.referencedFileCount : undefined,
+      editedFileCount: isNumber(raw.editedFileCount) ? raw.editedFileCount : undefined,
+    };
+
+    const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : undefined;
+    const rules = getAllRules();
+    const issues = diagnosePrompt(input, rules);
+    const profile = assembleProfile(a.filterSessions(filter), input, rules);
+    const cost = buildCost(text, input.modelId, FF_TOKEN_REPORTING_ENABLED);
+    return { issues, profile, cost };
+  },
+
+  promptStudioRecentPrompts: (a, _p, params) => {
+    const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : validateDateFilter(params || {});
+    const limit = isNumber(params?.limit) ? Math.max(1, Math.min(100, Math.floor(params.limit))) : 30;
+
+    const rows: StudioRecentPrompt[] = [];
+    for (const s of a.filterSessions(filter)) {
+      for (const r of s.requests) {
+        if (!r.messageText || !r.messageText.trim()) continue;
+        rows.push({
+          sessionId: s.sessionId,
+          requestId: r.requestId,
+          preview: r.messageText.slice(0, 120),
+          text: r.messageText.slice(0, MAX_STUDIO_PROMPT_CHARS),
+          agentMode: r.agentMode,
+          modelId: r.modelId,
+          slashCommand: r.slashCommand,
+          referencedFileCount: r.referencedFiles.length,
+          editedFileCount: r.editedFiles.length,
+          workspaceName: s.workspaceName,
+          timestamp: r.timestamp,
+        });
+      }
+    }
+    rows.sort((x, y) => (y.timestamp ?? 0) - (x.timestamp ?? 0));
+    return { prompts: rows.slice(0, limit) };
+  },
+
+  promptStudioImprove: async (_a, _p, params) => {
+    const text = (isString(params?.text) ? params.text : '').slice(0, MAX_STUDIO_PROMPT_CHARS);
+    if (!text.trim()) return errorResult('Empty prompt');
+    const issues = sanitizeStudioIssues(params?.issues);
+    const profile = sanitizeStudioProfile(params?.profile);
+    return improvePromptViaClaude({ text, issues, profile });
+  },
 };
+
+/** Hard cap on prompt text passed through Studio RPCs, to bound work + spawn input. */
+const MAX_STUDIO_PROMPT_CHARS = 100_000;
+
+function sanitizeStudioIssues(raw: unknown): StudioIssue[] {
+  if (!Array.isArray(raw)) return [];
+  const out: StudioIssue[] = [];
+  for (const item of raw.slice(0, 20)) {
+    if (!isRecord(item)) continue;
+    out.push({
+      ruleId: isString(item.ruleId) ? item.ruleId : '',
+      ruleName: isString(item.ruleName) ? item.ruleName : '',
+      severity: item.severity === 'high' || item.severity === 'low' ? item.severity : 'medium',
+      group: isString(item.group) ? (item.group as StudioIssue['group']) : 'prompt-quality',
+      suggestion: isString(item.suggestion) ? item.suggestion : '',
+      example: isString(item.example) ? item.example : undefined,
+    });
+  }
+  return out;
+}
+
+function sanitizeStudioProfile(raw: unknown): StudioProfile {
+  const empty: StudioProfile = { intent: 'Implementation', topPatterns: [], contextGaps: [], sampleSize: 0 };
+  if (!isRecord(raw)) return empty;
+  const intents = ['Planning', 'Implementation', 'Debugging', 'Review', 'Exploration'];
+  const topPatterns = Array.isArray(raw.topPatterns)
+    ? raw.topPatterns.slice(0, 10).filter(isRecord).map(p => ({
+        id: isString(p.id) ? p.id : '',
+        name: isString(p.name) ? p.name : '',
+        occurrences: isNumber(p.occurrences) ? p.occurrences : 0,
+      }))
+    : [];
+  const contextGaps = Array.isArray(raw.contextGaps)
+    ? raw.contextGaps.filter((g): g is string => isString(g)).slice(0, 10)
+    : [];
+  return {
+    intent: isString(raw.intent) && intents.includes(raw.intent) ? (raw.intent as StudioProfile['intent']) : 'Implementation',
+    topPatterns,
+    contextGaps,
+    sampleSize: isNumber(raw.sampleSize) ? raw.sampleSize : 0,
+  };
+}
 
 function buildNumericHistogram(sorted: number[], buckets: number): { label: string; count: number }[] {
   if (sorted.length === 0) return [];

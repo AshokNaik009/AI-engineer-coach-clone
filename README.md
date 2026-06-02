@@ -10,6 +10,10 @@ Analyze your AI coding assistant usage — any harness, one dashboard.
 <img alt="VS Code 1.115+" src="https://img.shields.io/badge/VS%20Code-1.115%2B-007ACC">
 </p>
 
+<p align="center">
+<sub>A personal fork of <a href="https://github.com/microsoft/AI-Engineering-Coach">microsoft/AI-Engineering-Coach</a> — see <a href="#credits--attribution">Credits &amp; Attribution</a>.</sub>
+</p>
+
 <br>
 
 <p align="center">
@@ -192,9 +196,19 @@ trademarks or logos is subject to and must follow
 Use of Microsoft trademarks or logos in modified versions of this project must not cause confusion or imply Microsoft sponsorship.
 Any use of third-party trademarks or logos are subject to those third-party's policies.
 
+## Credits & Attribution
+
+This repository is a personal fork/clone of the original **[AI Engineer Coach](https://github.com/microsoft/AI-Engineering-Coach)** project created and maintained by Microsoft and its open-source contributors.
+
+- **Original project:** https://github.com/microsoft/AI-Engineering-Coach
+- **Original authors:** Microsoft Corporation and contributors
+- **License:** MIT — Copyright (c) Microsoft Corporation (see [LICENSE](LICENSE))
+
+All credit for the original design, architecture, and implementation belongs to the upstream authors. This fork contains personal modifications and experiments (e.g. Prompt Studio) and is **not** affiliated with, sponsored by, or endorsed by Microsoft.
+
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE) — the original MIT License and Copyright (c) Microsoft Corporation are retained in full.
 
 ## Disclaimer
 

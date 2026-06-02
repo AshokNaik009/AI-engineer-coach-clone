@@ -52,6 +52,13 @@ import type { ConfigHealthData } from './config-types';
 import type { InsightsData } from './insights-types';
 import type { ContextManagementData, FlowStateData, WorkspaceContextSessionsData } from './context-types';
 import type { ImageGalleryData } from '../analyzer-images';
+import type {
+  StudioInput,
+  StudioDiagnosis,
+  StudioRecentPrompt,
+  ClaudeImproveInput,
+  ClaudeImproveResult,
+} from './prompt-studio-types';
 
 /* RPC method map: method name -> { params, result } */
 export interface RpcMethodMap {
@@ -111,6 +118,10 @@ export interface RpcMethodMap {
   getDataExplorerFields: { params: DateFilter | undefined; result: unknown };
   importRegistryRules: { params: { ruleIds?: string[] }; result: unknown };
   getRegistryCatalog: { params: undefined; result: unknown };
+  /* ---- Prompt Studio ---- */
+  promptStudioDiagnose: { params: { input: StudioInput; filter?: DateFilter }; result: StudioDiagnosis };
+  promptStudioRecentPrompts: { params: { filter?: DateFilter; limit?: number } | undefined; result: { prompts: StudioRecentPrompt[] } };
+  promptStudioImprove: { params: ClaudeImproveInput; result: ClaudeImproveResult };
 }
 
 export type RpcMethodName = keyof RpcMethodMap;
