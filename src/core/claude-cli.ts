@@ -79,7 +79,7 @@ export async function improvePromptViaClaude(
   const binPath = opts.binPath ?? 'claude';
   const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const model = opts.model ?? DEFAULT_MODEL;
-  const runner = opts.runner ?? defaultRunner;
+  const runner = opts.runner ?? defaultClaudeRunner;
 
   let cwd = opts.cwd;
   let tempDir: string | undefined;
@@ -115,7 +115,9 @@ export async function improvePromptViaClaude(
 /*  Default runner (spawn)                                            */
 /* ================================================================== */
 
-const defaultRunner: ClaudeRunner = (stdin, args, opts) =>
+/** Shared default runner — also used by `claude-resume.ts` so both `claude -p`
+ *  surfaces (Prompt Studio, Session Chat) spawn the binary identically. */
+export const defaultClaudeRunner: ClaudeRunner = (stdin, args, opts) =>
   new Promise((resolve, reject) => {
     const child = spawn(opts.binPath, args, { cwd: opts.cwd, stdio: ['pipe', 'pipe', 'pipe'] });
     let stdout = '';
@@ -194,7 +196,7 @@ function buildStructuredInput(input: ClaudeImproveInput): string {
 
 /** Extract the first balanced JSON object from a string, or null. Tolerates
  *  leading/trailing logs and markdown fences around the JSON. */
-function extractJsonObject(raw: string): string | null {
+export function extractJsonObject(raw: string): string | null {
   const text = raw.replaceAll(/```(?:json)?/gi, '').trim();
   const start = text.indexOf('{');
   if (start < 0) return null;

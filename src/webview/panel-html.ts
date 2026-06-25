@@ -11,6 +11,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'app.js'));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'styles.css'));
   const nonce = getNonce();
+  const sessionChatEnabled = vscode.workspace.getConfiguration('aiEngineerCoach.sessionChat').get<boolean>('enabled', false);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -35,6 +36,7 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       <li><a href="#" data-page="patterns"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.9"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.5"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor" opacity="0.9"/></svg></span> Patterns</a></li>
       <li class="nav-group-header">Improve</li>
       <li><a href="#" data-page="prompt-studio"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 13.5L10 6l1.5 1.5L4 15z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M11.5 2l.7 1.6 1.6.7-1.6.7L11.5 6.6l-.7-1.6L9.2 4.3l1.6-.7z" fill="currentColor"/></svg></span> Prompt Studio</a></li>
+      ${sessionChatEnabled ? '<li><a href="#" data-page="session-chat"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3h10a1 1 0 0 1 1 1v6a1 1 0 0 1-1 1H6l-3 2.5V4a1 1 0 0 1 1-1z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5.5 6.5h5M5.5 8.5h3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg></span> Session Chat</a></li>' : ''}
       <li><a href="#" data-page="anti-patterns"><span class="nav-icon">&#9888;</span> Anti-Patterns<span class="nav-badge" id="badge-antipatterns"></span></a></li>
       <li><a href="#" data-page="skills"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="8" cy="13" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><line x1="4" y1="6.5" x2="8" y2="10.5" stroke="currentColor" stroke-width="1.2"/><line x1="12" y1="6.5" x2="8" y2="10.5" stroke="currentColor" stroke-width="1.2"/></svg></span> Skill Finder<span class="nav-badge" id="badge-skills"></span></a></li>
       <li><a href="#" data-page="config-health"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L1.5 4.5V11.5L8 15L14.5 11.5V4.5Z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M8 5.5V10.5M5.5 8H10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> Context Health</a></li>

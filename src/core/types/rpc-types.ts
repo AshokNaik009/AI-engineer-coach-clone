@@ -59,6 +59,12 @@ import type {
   ClaudeImproveInput,
   ClaudeImproveResult,
 } from './prompt-studio-types';
+import type {
+  SessionChatEligibility,
+  SessionChatSendParams,
+  SessionChatTurn,
+  SessionChatPermissionMode,
+} from './session-chat-types';
 
 /* RPC method map: method name -> { params, result } */
 export interface RpcMethodMap {
@@ -122,6 +128,14 @@ export interface RpcMethodMap {
   promptStudioDiagnose: { params: { input: StudioInput; filter?: DateFilter }; result: StudioDiagnosis };
   promptStudioRecentPrompts: { params: { filter?: DateFilter; limit?: number } | undefined; result: { prompts: StudioRecentPrompt[] } };
   promptStudioImprove: { params: ClaudeImproveInput; result: ClaudeImproveResult };
+  /* ---- Session Chat (Continue in Coach) ---- */
+  sessionChatEligibility: { params: { sessionId: string }; result: SessionChatEligibility };
+  sessionChatSend: { params: SessionChatSendParams; result: SessionChatTurn };
+  /* Phase 2: live streaming process (fire-and-forget sends; output via push channel) */
+  sessionChatOpenLive: { params: { sessionId: string }; result: { ok: boolean; error?: string; permissionMode?: SessionChatPermissionMode; cwd?: string } };
+  sessionChatSendLive: { params: { sessionId: string; message: string }; result: { accepted: boolean } };
+  sessionChatInterrupt: { params: { sessionId: string }; result: { ok: boolean } };
+  sessionChatCloseLive: { params: { sessionId: string }; result: { ok: boolean } };
 }
 
 export type RpcMethodName = keyof RpcMethodMap;
@@ -147,6 +161,8 @@ export interface ExtensionMethodMap extends RpcMethodMap {
   getSdlcGitHubData: { params: Record<string, unknown>; result: unknown };
   saveModelBudgets: { params: { budgets: Record<string, number> }; result: { ok: boolean } };
   loadModelBudgets: { params: Record<string, unknown> | undefined; result: Record<string, number> };
+  /** Get (no params) or persist (`ack: true`) the one-time Session Chat consent. */
+  sessionChatConsent: { params: { ack?: boolean } | undefined; result: { consented: boolean } };
 }
 
 export type ExtensionMethodName = keyof ExtensionMethodMap;

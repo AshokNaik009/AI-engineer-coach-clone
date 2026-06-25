@@ -12,3 +12,4 @@ export * from './types/context-types';
 export * from './types/rule-types';
 export * from './types/rpc-types';
 export * from './types/prompt-studio-types';
+export * from './types/session-chat-types';

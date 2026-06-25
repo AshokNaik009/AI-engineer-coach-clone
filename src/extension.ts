@@ -22,6 +22,7 @@ import {
   type PendingEntry,
 } from './core/rule-trust';
 import { panelCache } from './webview/panel-cache';
+import { SessionsTreeProvider } from './webview/sidebar-sessions';
 import { registerTools } from './mcp/tools';
 import { registerChatParticipant } from './chat/participant';
 import { exportSummaryFiles } from './summary-export-vscode';
@@ -171,6 +172,20 @@ export function activate(context: vscode.ExtensionContext) {
       if (getPending().length > 0) await promptAndReload();
       await exportSummaryFromLogs();
     }),
+    vscode.commands.registerCommand('aiEngineerCoach.continueSession', async (sessionId?: string) => {
+      runtimeDebug('extension', 'command-continue-session', typeof sessionId === 'string' ? sessionId : '(none)');
+      await ready;
+      if (getPending().length > 0) await promptAndReload();
+      const { DashboardPanel } = await loadPanelModule();
+      DashboardPanel.createOrShow(context.extensionUri, context);
+      if (typeof sessionId === 'string' && sessionId) {
+        DashboardPanel.current?.navigateToPage('session-chat', sessionId);
+      }
+    }),
+    vscode.commands.registerCommand('aiEngineerCoach.refreshSessions', () => {
+      runtimeDebug('extension', 'command-refresh-sessions');
+      SessionsTreeProvider.instance?.refresh();
+    }),
     vscode.commands.registerCommand('aiEngineerCoach.reviewLocalRules', async () => {
       runtimeDebug('extension', 'command-review-trust');
       await ready;
@@ -195,6 +210,13 @@ export function activate(context: vscode.ExtensionContext) {
 
   registerTools(context, () => panelCache.analyzerInstance);
   registerChatParticipant(context);
+
+  // Sessions tree (hidden behind the sessionChat.enabled `when` clause in
+  // package.json — registering unconditionally is cheap and keeps the
+  // provider alive across setting toggles).
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider('aiEngineerCoach.sessions', new SessionsTreeProvider()),
+  );
 
   void ready.then(() => loadPanelModule()).then(({ DashboardSidebarProvider }) => {
     const sidebarProvider = new DashboardSidebarProvider(context.extensionUri);

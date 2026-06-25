@@ -15,9 +15,10 @@ import { WebviewMessage } from '../core/types';
 import { panelCache } from './panel-cache';
 import { clearCatalogCache } from './panel-catalog';
 import { getDashboardHtml, getErrorHtml } from './panel-html';
-import { getRpcHandler } from './panel-rpc';
+import { getRpcHandler, setLiveChatPushSender, closeAllChatProcesses } from './panel-rpc';
 import { PanelRequestService } from './panel-request-service';
 import { DashboardSidebarProvider } from './panel-sidebar';
+import { SessionsTreeProvider } from './sidebar-sessions';
 import { isRequestMessage, postResponse, errorResult } from './panel-shared';
 
 export { DashboardSidebarProvider } from './panel-sidebar';
@@ -35,6 +36,7 @@ export class DashboardPanel {
   private analyzer: Analyzer | undefined;
   private parseResult: ParseResult | undefined;
   private pendingMessages: Extract<WebviewMessage, { type: 'request' }>[] = [];
+  private pendingNavigate: { type: 'push'; topic: 'navigate'; page: string; hint?: string } | undefined;
   private dataReady = false;
   private disposed = false;
   private loading = false;
@@ -60,6 +62,12 @@ export class DashboardPanel {
       this.dispose();
     }, null, this.disposables);
     this.panel.webview.onDidReceiveMessage((msg: unknown) => this.handleMessage(msg), null, this.disposables);
+
+    setLiveChatPushSender((msg) => {
+      if (!this.disposed) {
+        try { this.panel.webview.postMessage(msg); } catch { /* disposed */ }
+      }
+    });
 
     void this.loadData();
   }
@@ -106,6 +114,7 @@ export class DashboardPanel {
       return;
     }
     runtimeDebug('panel', 'reload');
+    closeAllChatProcesses();
     clearCache();
     clearCatalogCache();
     panelCache.clear();
@@ -129,6 +138,25 @@ export class DashboardPanel {
       savedAt: Date.now(),
     });
     DashboardSidebarProvider.instance?.refresh();
+    SessionsTreeProvider.instance?.refresh();
+  }
+
+  /** Deep-link the dashboard webview onto a page (e.g. Session Chat with a
+   *  session preselected). Queued until the webview has signalled dataReady,
+   *  because messages posted before the script loads are dropped. */
+  public navigateToPage(page: string, hint?: string): void {
+    const message = { type: 'push', topic: 'navigate', page, hint } as const;
+    if (this.dataReady && !this.disposed) {
+      try { this.panel.webview.postMessage(message); } catch { /* disposed */ }
+    } else {
+      this.pendingNavigate = message;
+    }
+  }
+
+  private flushPendingNavigate(): void {
+    if (!this.pendingNavigate || this.disposed) return;
+    try { this.panel.webview.postMessage(this.pendingNavigate); } catch { /* disposed */ }
+    this.pendingNavigate = undefined;
   }
 
   private async loadData(): Promise<void> {
@@ -196,6 +224,7 @@ export class DashboardPanel {
         this.updateSidebarStats();
         this.dataReady = true;
         safePost({ type: 'dataReady', currentWorkspace: vscode.workspace.name || '' });
+        this.flushPendingNavigate();
         return;
       }
 
@@ -242,6 +271,7 @@ export class DashboardPanel {
       this.dataReady = true;
 
       safePost({ type: 'dataReady', currentWorkspace: vscode.workspace.name || '' });
+      this.flushPendingNavigate();
       runtimeDebug('panel', 'data-ready-sent', `elapsedMs=${Date.now() - t0}`);
 
       try {
@@ -267,10 +297,9 @@ export class DashboardPanel {
     }
   }
 
-  private handleMessage(msg: unknown): void {
-    if (this.disposed) return;
-    if (!isRequestMessage(msg)) return;
-
+  /** Host-only methods that bypass the analyzer/data-readiness pipeline.
+   *  Returns true when the message was consumed. */
+  private handleHostOnlyMessage(msg: Extract<WebviewMessage, { type: 'request' }>): boolean {
     // Open external URLs from webview
     if (msg.method === 'openExternal') {
       const url = (msg.params as Record<string, unknown> | undefined)?.url;
@@ -278,14 +307,29 @@ export class DashboardPanel {
         void vscode.env.openExternal(vscode.Uri.parse(url));
         postResponse(this.panel.webview, msg.id, { ok: true });
       }
-      return;
+      return true;
     }
 
     // Budget persistence — handled before data readiness check
     if (msg.method === 'saveModelBudgets' || msg.method === 'loadModelBudgets') {
       this.handleBudgetMessage(msg);
-      return;
+      return true;
     }
+
+    // Session Chat consent — globalState-backed, independent of parsed data
+    if (msg.method === 'sessionChatConsent') {
+      this.handleConsentMessage(msg);
+      return true;
+    }
+
+    return false;
+  }
+
+  private handleMessage(msg: unknown): void {
+    if (this.disposed) return;
+    if (!isRequestMessage(msg)) return;
+
+    if (this.handleHostOnlyMessage(msg)) return;
 
     if (this.requestService.tryHandle(msg)) return;
 
@@ -332,6 +376,20 @@ export class DashboardPanel {
   }
 
   private static readonly BUDGET_STATE_KEY = 'modelBudgets';
+  private static readonly SESSION_CHAT_CONSENT_KEY = 'sessionChatConsented';
+
+  private handleConsentMessage(msg: Extract<WebviewMessage, { type: 'request' }>): void {
+    const ack = (msg.params as Record<string, unknown> | undefined)?.ack === true;
+    if (ack) {
+      this.globalState.update(DashboardPanel.SESSION_CHAT_CONSENT_KEY, true).then(
+        () => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, { consented: true }); } catch { /* disposed */ } },
+        () => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, errorResult('Failed to save consent')); } catch { /* disposed */ } },
+      );
+      return;
+    }
+    const consented = this.globalState.get<boolean>(DashboardPanel.SESSION_CHAT_CONSENT_KEY, false);
+    if (!this.disposed) try { postResponse(this.panel.webview, msg.id, { consented }); } catch { /* disposed */ }
+  }
 
   private handleBudgetMessage(msg: Extract<WebviewMessage, { type: 'request' }>): void {
     if (msg.method === 'saveModelBudgets') {
@@ -349,6 +407,8 @@ export class DashboardPanel {
   private dispose(): void {
     runtimeDebug('panel', 'dispose');
     this.disposed = true;
+    closeAllChatProcesses();
+    setLiveChatPushSender(undefined);
     DashboardPanel.instance = undefined;
     this.panel.dispose();
     for (const disposable of this.disposables) disposable.dispose();

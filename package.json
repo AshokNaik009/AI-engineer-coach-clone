@@ -62,8 +62,37 @@
         "command": "aiEngineerCoach.reviewLocalRules",
         "title": "AI Engineer Coach: Review Local Rule Approvals",
         "icon": "$(shield)"
+      },
+      {
+        "command": "aiEngineerCoach.continueSession",
+        "title": "AI Engineer Coach: Continue Claude Session",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "aiEngineerCoach.refreshSessions",
+        "title": "AI Engineer Coach: Refresh Sessions",
+        "icon": "$(refresh)"
       }
     ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "aiEngineerCoach.refreshSessions",
+          "when": "view == aiEngineerCoach.sessions",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "aiEngineerCoach.continueSession",
+          "when": "config.aiEngineerCoach.sessionChat.enabled"
+        },
+        {
+          "command": "aiEngineerCoach.refreshSessions",
+          "when": "config.aiEngineerCoach.sessionChat.enabled"
+        }
+      ]
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -79,8 +108,50 @@
           "id": "aiEngineerCoach.welcome",
           "name": "Dashboard",
           "type": "webview"
+        },
+        {
+          "id": "aiEngineerCoach.sessions",
+          "name": "Sessions",
+          "type": "tree",
+          "when": "config.aiEngineerCoach.sessionChat.enabled"
         }
       ]
+    },
+    "configuration": {
+      "title": "AI Engineer Coach",
+      "properties": {
+        "aiEngineerCoach.sessionChat.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable Session Chat: continue Claude Code sessions from the dashboard. Opt-in exception to the extension's read-only posture — turns are appended to ~/.claude session history by the Claude CLI and spend your Claude API/subscription usage."
+        },
+        "aiEngineerCoach.sessionChat.binPath": {
+          "type": "string",
+          "default": "claude",
+          "description": "Path to the Claude Code CLI binary used to continue sessions."
+        },
+        "aiEngineerCoach.sessionChat.timeoutMs": {
+          "type": "number",
+          "default": 120000,
+          "description": "Per-turn timeout in milliseconds. Resumed sessions re-hydrate their full transcript, so long sessions need more headroom."
+        },
+        "aiEngineerCoach.sessionChat.model": {
+          "type": "string",
+          "default": "",
+          "description": "Model passed to --model when continuing a session. Leave empty to inherit your Claude CLI configuration (recommended — resuming a cheap-model session under an Opus default silently multiplies per-turn cost)."
+        },
+        "aiEngineerCoach.sessionChat.permissionMode": {
+          "type": "string",
+          "default": "none",
+          "enum": ["none", "plan", "acceptEdits"],
+          "enumDescriptions": [
+            "Conversation only: no tools run (--allowedTools \"\"). Same posture as Phase 1.",
+            "Claude may read files and plan, but cannot mutate them.",
+            "File edits are auto-approved in the session's working directory. A persistent banner shows the cwd while this mode is active."
+          ],
+          "description": "Tool-execution posture for live Session Chat (Phase 2). 'none' keeps the extension's conversation-only default. 'acceptEdits' shows a persistent banner with the working directory."
+        }
+      }
     },
     "chatParticipants": [
       {

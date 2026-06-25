@@ -12,7 +12,9 @@ export const vscode = acquireVsCodeApi();
 let rpcId = 0;
 const RPC_TIMEOUT_MS = 120_000;
 const RPC_LLM_TIMEOUT_MS = 300_000;
-const LLM_METHODS = new Set(['generateRule', 'explainOccurrence']);
+// sessionChatSend spawns `claude -p --resume` with its own 120s default kill
+// timer — the RPC deadline must outlive it, not race it.
+const LLM_METHODS = new Set(['generateRule', 'explainOccurrence', 'sessionChatSend']);
 const pending = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
 /**
@@ -50,6 +52,31 @@ export async function rpcAllSettled<T extends readonly unknown[]>(
   ) as unknown as T;
 }
 
+/* ---- Host→webview push channel ---- */
+// `rpc()` is strictly request/response; pushes are host-initiated events
+// (deep-link navigation now, Phase 2 streaming chat later). Subscribers MUST
+// unsubscribe on route change — a leaked subscription across navigations is
+// the classic double-append bug here.
+type PushHandler = (msg: Record<string, unknown>) => void;
+const pushHandlers = new Map<string, Set<PushHandler>>();
+
+export function onPush(topic: string, cb: PushHandler): () => void {
+  let handlers = pushHandlers.get(topic);
+  if (!handlers) {
+    handlers = new Set();
+    pushHandlers.set(topic, handlers);
+  }
+  handlers.add(cb);
+  return () => { pushHandlers.get(topic)?.delete(cb); };
+}
+
+function dispatchPush(msg: Record<string, unknown>): void {
+  if (typeof msg.topic !== 'string') return;
+  const handlers = pushHandlers.get(msg.topic);
+  if (!handlers) return;
+  for (const cb of handlers) cb(msg);
+}
+
 export function initMessageListener(
   onProgress: (msg: { phase: number; detail?: string; pct: number; sessions?: number; linesOfCode?: number; toolCalls?: number; imagesAnalyzed?: number; filesEdited?: number; requests?: number; workspacePlan?: string[]; workspaceDone?: string }) => void,
   onDataReady: (currentWorkspace: string) => void,
@@ -82,6 +109,9 @@ export function initMessageListener(
     }
     if (msg.type === 'dataReady') {
       onDataReady(msg.currentWorkspace as string);
+    }
+    if (msg.type === 'push') {
+      dispatchPush(msg);
     }
   });
 }

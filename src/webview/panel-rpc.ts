@@ -5,6 +5,7 @@
 
 /* RPC validation and dispatch helpers for the dashboard panel. */
 
+import { spawnSync } from 'child_process';
 import { Analyzer } from '../core/analyzer';
 import { ParseResult } from '../core/parser';
 import { loadSessionFromDisk } from '../core/cache';
@@ -38,6 +39,16 @@ import { compileNaturalLanguageRule } from '../core/rule-compiler';
 import type { SessionRequest, Session, StudioInput, StudioIssue, StudioProfile, StudioRecentPrompt } from '../core/types';
 import { diagnosePrompt, assembleProfile, buildCost } from '../core/prompt-studio';
 import { improvePromptViaClaude } from '../core/claude-cli';
+import { continueClaudeSession, evaluateSessionChatEligibility } from '../core/claude-resume';
+import {
+  getOrCreateChatProcess,
+  getChatProcess,
+  closeChatProcess,
+  closeAllChatProcesses as _closeAll,
+  ClaudeChatProcess,
+} from '../core/claude-chat-process';
+import type { ClaudeChatProcessOptions } from '../core/claude-chat-process';
+import type { SessionChatEligibility, SessionChatTurn, SessionChatPermissionMode } from '../core/types/session-chat-types';
 import { errorResult, isString, isNumber, isOptionalString, isRecord } from './panel-shared';
 import { DSL_CHEATSHEET } from './dsl-cheatsheet';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
@@ -1322,7 +1333,206 @@ Explain why this session triggered the rule.`;
     const profile = sanitizeStudioProfile(params?.profile);
     return improvePromptViaClaude({ text, issues, profile });
   },
+
+  /* ---- Session Chat (Continue in Coach) ---- */
+  sessionChatEligibility: (_a, p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    if (!sessionId) {
+      return { eligible: false, reason: 'no-session-file', detail: 'Missing session id.' } satisfies SessionChatEligibility;
+    }
+    return computeSessionChatEligibility(p, sessionId, false);
+  },
+
+  sessionChatSend: async (_a, p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    const message = isString(params?.message) ? params.message : '';
+    const failed = (error: string): SessionChatTurn => ({ reply: '', sessionId, error });
+    if (!sessionId || !message.trim()) return failed('Missing session id or message.');
+    if (message.length > MAX_SESSION_CHAT_MESSAGE_CHARS) {
+      return failed(`Message too long (${message.length.toLocaleString()} chars; limit ${MAX_SESSION_CHAT_MESSAGE_CHARS.toLocaleString()}).`);
+    }
+
+    // Never trust the webview — re-check eligibility server-side. The
+    // recently-active heuristic alone honors an explicit user override.
+    const ignoreRecent = params?.ignoreRecentActivity === true;
+    const eligibility = computeSessionChatEligibility(p, sessionId, ignoreRecent);
+    if (!eligibility.eligible || !eligibility.resolvedCwd) {
+      return failed(eligibility.detail || 'This session cannot be continued.');
+    }
+
+    const config = getSessionChatConfig();
+    const turn = await continueClaudeSession(
+      { sessionId, message, fork: params?.fork === true },
+      { cwd: eligibility.resolvedCwd, binPath: config.binPath, timeoutMs: config.timeoutMs, model: config.model },
+    );
+    if (!turn.error) refreshSessionsTreeSafe();
+    return turn;
+  },
+
+  /* ---- Phase 2: live streaming handlers ---- */
+
+  sessionChatOpenLive: (_a, p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    if (!sessionId) return { ok: false, error: 'Missing session id.' };
+
+    const eligibility = computeSessionChatEligibility(p, sessionId, false);
+    if (!eligibility.eligible || !eligibility.resolvedCwd) {
+      return { ok: false, error: eligibility.detail || 'This session cannot be continued.' };
+    }
+
+    const config = getSessionChatConfig();
+    const opts: ClaudeChatProcessOptions = {
+      sessionId,
+      cwd: eligibility.resolvedCwd,
+      binPath: config.binPath,
+      model: config.model || undefined,
+      permissionMode: config.permissionMode,
+    };
+
+    try {
+      const proc = getOrCreateChatProcess(opts);
+      // Wire push subscription only once per process instance.
+      if (subscribedProcesses.get(sessionId) !== proc) {
+        subscribedProcesses.set(sessionId, proc);
+        proc.onEvent((event) => {
+          liveChatPushSender?.({ kind: 'push', topic: 'sessionChat', sessionId, event });
+          if (event.kind === 'turn-end') {
+            refreshSessionsTreeSafe();
+          }
+          if (event.kind === 'closed' && subscribedProcesses.get(sessionId) === proc) {
+            subscribedProcesses.delete(sessionId);
+          }
+        });
+      }
+      return { ok: true, permissionMode: config.permissionMode, cwd: eligibility.resolvedCwd };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    }
+  },
+
+  sessionChatSendLive: (_a, _p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    const message = isString(params?.message) ? params.message : '';
+    if (!sessionId || !message.trim()) return { accepted: false };
+    const proc = getChatProcess(sessionId);
+    if (!proc) return { accepted: false };
+    proc.send(message);
+    return { accepted: true };
+  },
+
+  sessionChatInterrupt: (_a, _p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    const proc = getChatProcess(sessionId);
+    if (!proc) return { ok: false };
+    proc.interrupt();
+    return { ok: true };
+  },
+
+  sessionChatCloseLive: (_a, _p, params) => {
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    closeChatProcess(sessionId);
+    subscribedProcesses.delete(sessionId);
+    return { ok: true };
+  },
 };
+
+/* ── Live chat push channel ── */
+
+/** Set by panel.ts after creating the webview; undefined between reloads. */
+let liveChatPushSender: ((msg: Record<string, unknown>) => void) | undefined;
+
+/** sessionId → the ClaudeChatProcess instance we last subscribed to.
+ *  Prevents double-wiring push events when `sessionChatOpenLive` is called
+ *  for a process that is already alive (e.g. user re-navigates to the page). */
+const subscribedProcesses = new Map<string, ClaudeChatProcess>();
+
+export function setLiveChatPushSender(fn: ((msg: Record<string, unknown>) => void) | undefined): void {
+  liveChatPushSender = fn;
+}
+
+/** Dispose every live chat process — called on panel dispose() and reload()
+ *  so orphaned processes never stream into the void. */
+export function closeAllChatProcesses(): void {
+  _closeAll();
+  subscribedProcesses.clear();
+}
+
+/* ── Session Chat helpers ── */
+
+/** Bound spawn stdin; a chat turn should never approach this. */
+const MAX_SESSION_CHAT_MESSAGE_CHARS = 200_000;
+
+interface SessionChatConfig {
+  enabled: boolean;
+  binPath: string;
+  timeoutMs: number;
+  model: string;
+  permissionMode: SessionChatPermissionMode;
+}
+
+function getSessionChatConfig(): SessionChatConfig {
+  const defaults: SessionChatConfig = { enabled: false, binPath: 'claude', timeoutMs: 120_000, model: '', permissionMode: 'none' };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vscode = require('vscode') as typeof import('vscode');
+    const cfg = vscode.workspace.getConfiguration('aiEngineerCoach.sessionChat');
+    const rawMode = cfg.get<string>('permissionMode', 'none');
+    const permissionMode: SessionChatPermissionMode =
+      rawMode === 'plan' || rawMode === 'acceptEdits' ? rawMode : 'none';
+    return {
+      enabled: cfg.get<boolean>('enabled', defaults.enabled),
+      binPath: cfg.get<string>('binPath', defaults.binPath) || defaults.binPath,
+      timeoutMs: cfg.get<number>('timeoutMs', defaults.timeoutMs) || defaults.timeoutMs,
+      model: cfg.get<string>('model', defaults.model),
+      permissionMode,
+    };
+  } catch {
+    return defaults; // test context — feature stays off
+  }
+}
+
+/** `claude --version` probe. Successes are cached for the host lifetime;
+ *  failures only briefly, so installing the CLI doesn't require a reload. */
+const cliProbeCache = new Map<string, { ok: boolean; at: number }>();
+const CLI_PROBE_FAILURE_TTL_MS = 60_000;
+
+function isClaudeCliAvailable(binPath: string): boolean {
+  const cached = cliProbeCache.get(binPath);
+  if (cached && (cached.ok || Date.now() - cached.at < CLI_PROBE_FAILURE_TTL_MS)) return cached.ok;
+  let ok: boolean;
+  try {
+    ok = spawnSync(binPath, ['--version'], { timeout: 5_000 }).status === 0;
+  } catch {
+    ok = false;
+  }
+  cliProbeCache.set(binPath, { ok, at: Date.now() });
+  return ok;
+}
+
+function computeSessionChatEligibility(
+  parseResult: ParseResult,
+  sessionId: string,
+  ignoreRecentActivity: boolean,
+): SessionChatEligibility {
+  const config = getSessionChatConfig();
+  const session = parseResult.sessions.find(s => s.sessionId === sessionId);
+  return evaluateSessionChatEligibility({
+    sessionId,
+    featureEnabled: config.enabled,
+    cliAvailable: config.enabled ? isClaudeCliAvailable(config.binPath) : false,
+    harness: session?.harness,
+    workspaceRootPath: session?.workspaceRootPath,
+    ignoreRecentActivity,
+  });
+}
+
+/** A successful turn changes session order — nudge the Sessions tree.
+ *  Dynamic import + catch keeps this a no-op in test contexts (no vscode). */
+function refreshSessionsTreeSafe(): void {
+  import('./sidebar-sessions')
+    .then(m => m.SessionsTreeProvider.instance?.refresh())
+    .catch(() => { /* not running inside VS Code */ });
+}
 
 /** Hard cap on prompt text passed through Studio RPCs, to bound work + spawn input. */
 const MAX_STUDIO_PROMPT_CHARS = 100_000;

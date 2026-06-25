@@ -6,7 +6,7 @@
 /* Webview entry -- runs in the browser context inside the VS Code webview */
 
 import { AntiPatternData, DateFilter, StatsResult } from '../core/types';
-import { $, $$, rpc, destroyCharts, initMessageListener, withErrorBoundary } from './shared';
+import { $, $$, rpc, destroyCharts, initMessageListener, onPush, withErrorBoundary } from './shared';
 import { html, render, unmount, ComponentChildren } from './render';
 import { renderDashboard } from './page-dashboard';
 import { renderPatterns } from './page-patterns';
@@ -22,6 +22,7 @@ import { renderDataExplorer } from './page-data-explorer';
 import { renderRulePlayground } from './page-rule-playground';
 import { renderImageGallery } from './page-image-gallery';
 import { renderPromptStudio } from './page-prompt-studio';
+import { renderSessionChat } from './page-session-chat';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
 
 function normalizePageForFeatureFlags(page: string): string {
@@ -45,6 +46,7 @@ let matchedWorkspaceId: string | undefined;
 export let navHint: string | undefined;
 export function setNavHint(hint: string | undefined): void { navHint = hint; }
 export function consumeNavHint(): string | undefined { const h = navHint; navHint = undefined; return h; }
+export function getMatchedWorkspaceId(): string | undefined { return matchedWorkspaceId; }
 
 /* ---- Nav Badge Helpers ---- */
 function setBadge(id: string, value: string | number): void {
@@ -448,6 +450,15 @@ function onDataReady(currentWorkspace: string): void {
 
 initMessageListener(handleProgress, onDataReady);
 
+/* Host-initiated deep links (e.g. Sessions tree → Session Chat with a
+ * specific session preselected via navHint). */
+onPush('navigate', (msg) => {
+  const page = typeof msg.page === 'string' ? msg.page : '';
+  if (!page) return;
+  if (typeof msg.hint === 'string' && msg.hint) setNavHint(msg.hint);
+  navigateTo(page);
+});
+
 /* ---- Navigation ---- */
 document.addEventListener('click', (e) => {
   const target = e.target as HTMLElement;
@@ -651,6 +662,7 @@ function renderPage(page: string): void {
     case 'rule-playground': withErrorBoundary('Rule Playground', content, () => renderRulePlayground(content, currentFilter)); break;
     case 'image-gallery': withErrorBoundary('Image Gallery', content, () => renderImageGallery(content, currentFilter)); break;
     case 'prompt-studio': withErrorBoundary('Prompt Studio', content, () => renderPromptStudio(content, currentFilter)); break;
+    case 'session-chat': withErrorBoundary('Session Chat', content, () => renderSessionChat(content, currentFilter)); break;
     default: render(html`<p>Unknown page</p>`, content);
   }
 }

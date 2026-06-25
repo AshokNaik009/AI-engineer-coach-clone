@@ -173,12 +173,35 @@ After install:
 
 ---
 
+## Session Chat (Session Continuation)
+
+<sub>A personal-fork feature, like Prompt Studio — not part of upstream <a href="https://github.com/microsoft/AI-Engineering-Coach">microsoft/AI-Engineering-Coach</a>. See <a href="#credits--attribution">Credits &amp; Attribution</a>.</sub>
+
+Continue any locally stored Claude Code session directly from the dashboard: pick a session, type a message, and Claude's reply is appended to the same `~/.claude` session history — so all existing analytics keep seeing the full conversation.
+
+**Opt-in, off by default.** The extension remains read-only by default; Session Chat is an explicit opt-in exception. When enabled:
+
+- It writes **only** to your local `~/.claude` session history, and only via the official `claude` CLI (`claude -p --resume`)
+- Each turn spends your Claude usage (API credits or subscription quota)
+- Telemetry posture is unchanged — still zero
+
+Enable it with the `aiEngineerCoach.sessionChat.enabled` setting. A **Sessions** tree view then appears in the sidebar (Claude sessions grouped by project, newest first — click one to continue it in the dashboard), and the **Session Chat** page offers a fork toggle ("Continue as branch") to branch into a new session instead of appending to the original.
+
+| Setting                                 | Default     | Description                                          |
+| --------------------------------------- | ----------- | ---------------------------------------------------- |
+| `aiEngineerCoach.sessionChat.enabled`   | `false`     | Master switch for the feature                        |
+| `aiEngineerCoach.sessionChat.binPath`   | `"claude"`  | Path to the Claude Code CLI                          |
+| `aiEngineerCoach.sessionChat.timeoutMs` | `120000`    | Per-turn timeout in milliseconds                     |
+| `aiEngineerCoach.sessionChat.model`     | `""`        | Model override; empty inherits your CLI configuration |
+
+---
+
 ## Privacy
 
-- **Read-only** — the extension never modifies your session files
+- **Read-only by default** — the extension never modifies your session files; the only exception is the opt-in [Session Chat](#session-chat-session-continuation) feature (default off), which appends to `~/.claude` session history via the official `claude` CLI
 - **Local analysis** — all parsing and analytics run entirely on your machine
 - **No proprietary telemetry** — the extension does not phone home or collect usage data
-- **Optional AI features** — some features (rule compiler, skill finder, context review) use the VS Code built-in Copilot language model API when explicitly invoked by the user
+- **Optional AI features** — some features (rule compiler, skill finder, context review) use the VS Code built-in Copilot language model API when explicitly invoked by the user; Session Chat uses your Claude Code CLI account and spends your Claude usage
 
 ---
 
@@ -204,7 +227,7 @@ This repository is a personal fork/clone of the original **[AI Engineer Coach](h
 - **Original authors:** Microsoft Corporation and contributors
 - **License:** MIT — Copyright (c) Microsoft Corporation (see [LICENSE](LICENSE))
 
-All credit for the original design, architecture, and implementation belongs to the upstream authors. This fork contains personal modifications and experiments (e.g. Prompt Studio) and is **not** affiliated with, sponsored by, or endorsed by Microsoft.
+All credit for the original design, architecture, and implementation belongs to the upstream authors. This fork contains personal modifications and experiments (e.g. Prompt Studio, Session Chat) and is **not** affiliated with, sponsored by, or endorsed by Microsoft.
 
 ## License
 
