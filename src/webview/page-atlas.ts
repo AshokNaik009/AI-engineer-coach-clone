@@ -72,7 +72,7 @@ export function renderAtlas(content: HTMLElement, _filter: DateFilter): void {
   window.clearInterval(elapsedTimer);
 
   const state: AtlasState = {
-    features: { atlas: true, atlasRefine: false, atlasExplain: false },
+    features: { atlas: true, atlasRefine: true, atlasExplain: true },
     maps: [],
     staleness: {},
   };
@@ -89,6 +89,10 @@ export function renderAtlas(content: HTMLElement, _filter: DateFilter): void {
     await refresh();
     // Progress pushes for a run that may already be in flight (page re-entry).
     activeUnsub = onPush('atlas', (msg) => handlePush(msg.runId as string, msg.event as AtlasProgressEvent));
+    if (hint.notice) {
+      state.flash = hint.notice;
+      paint();
+    }
     if (hint.overlaySessionId && state.features.atlasRefine) {
       const base = state.maps.find(m => m.kind === 'full');
       state.pending = { kind: 'session-overlay', sourceSessionId: hint.overlaySessionId, baseMapId: base?.id };
@@ -418,13 +422,14 @@ export function renderAtlas(content: HTMLElement, _filter: DateFilter): void {
   }
 }
 
-function parseHint(hint: string | undefined): { overlaySessionId?: string; explainSessionId?: string } {
+function parseHint(hint: string | undefined): { overlaySessionId?: string; explainSessionId?: string; notice?: string } {
   if (!hint) return {};
   try {
     const parsed = JSON.parse(hint) as Record<string, unknown>;
     return {
       overlaySessionId: typeof parsed.overlaySessionId === 'string' ? parsed.overlaySessionId : undefined,
       explainSessionId: typeof parsed.explainSessionId === 'string' ? parsed.explainSessionId : undefined,
+      notice: typeof parsed.notice === 'string' ? parsed.notice : undefined,
     };
   } catch {
     return {};

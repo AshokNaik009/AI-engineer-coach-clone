@@ -39,13 +39,27 @@ every source reference is a click away from the file and line it cites.
 | **Export** | Save dialog defaulting to `docs/atlas-<date>.html`; writes a byte-identical copy. This is the only way Atlas writes into your repository |
 | **Delete** | Removes the HTML and its index entry from extension storage |
 | **Regenerate** | Shown when the map is *N commits behind* `HEAD`; starts a fresh run after the usual estimate |
-| **Refine** *(experimental)* | With `aiEngineerCoach.atlas.refineEnabled`, a free-text instruction ("highlight the auth path") is sent to the map's original Claude session with `--resume` and produces a new, linked map |
+| **Refine** | A free-text instruction ("highlight the auth path") is sent to the map's original Claude session with `--resume` and produces a new map linked to its base. Same scope estimate and explicit click as a fresh run. Gate: `aiEngineerCoach.atlas.refineEnabled` |
 
 ### Staleness
 
 On page open Atlas runs `git rev-list --count <mapSha>..HEAD` and `git status --porcelain`
 (best effort). Maps show **N commits behind** or **generated with uncommitted changes**. Nothing
 regenerates on its own.
+
+### From the editor
+
+**AI Engineer Coach: Show File in Atlas** (Explorer or editor-title context menu) opens the latest
+full map and selects the node whose verified sources include that file, scrolling it into view.
+Archify's stable node ids and its JSON source-evidence block make this a pure client-side lookup --
+no Claude run.
+
+### From Replay
+
+A Replay session offers **Show in Atlas** (an overlay of the latest full map with the session's
+files highlighted) and **Explain this session** (a one-page Archify explainer of what the session
+changed and why, with the session's diffs pinned as evidence). Both are Claude runs and go through
+the same estimate + *Generate* step.
 
 ### Inside the renderer
 
@@ -71,5 +85,5 @@ killed after `aiEngineerCoach.atlas.timeoutMs` (10 minutes by default).
 | `aiEngineerCoach.atlas.model` | `""` | `--model` for Atlas runs; falls back to `sessionChat.model`, then the CLI default. `sonnet` is a good first choice |
 | `aiEngineerCoach.atlas.timeoutMs` | `600000` | Kill a run after this long |
 | `aiEngineerCoach.atlas.maxMaps` | `10` | Maps kept per workspace; oldest pruned on insert |
-| `aiEngineerCoach.atlas.refineEnabled` | `false` | Enable L3 refinement and Replay -> Atlas session overlays |
-| `aiEngineerCoach.atlas.explainEnabled` | `false` | Enable the "Explain this session" explainer page |
+| `aiEngineerCoach.atlas.refineEnabled` | `true` | Enable map refinement and Replay -> Atlas session overlays |
+| `aiEngineerCoach.atlas.explainEnabled` | `true` | Enable the "Explain this session" explainer page |

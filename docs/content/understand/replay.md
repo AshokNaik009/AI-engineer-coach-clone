@@ -52,7 +52,8 @@ turn. Every row toggles an inline diff and shows +/- line counts once loaded. He
 |---|---|
 | **Export Markdown** | Transcript plus every diff as a Markdown file, via a save dialog -- the only disk write Replay performs |
 | **Continue in Session Chat** | Deep-links the session into Session Chat (Claude sessions only) |
-| **Show in Atlas** *(2.1)* | Highlights the session's files on the latest full map; needs `aiEngineerCoach.atlas.refineEnabled` and a cached map |
+| **Show in Atlas** | Generates an Atlas overlay with the session's files highlighted on the latest full map (Claude run; gate `aiEngineerCoach.atlas.refineEnabled`) |
+| **Explain this session** | One-page Archify explainer of what the session changed and why, with the session's diffs pinned as evidence (Claude run; gate `aiEngineerCoach.atlas.explainEnabled`) |
 
 ## Settings
 

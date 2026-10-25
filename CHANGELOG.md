@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.1.0 — Understand, cross-linked
+
+### Added
+
+- **Atlas refinement (L3)** — *Refine* on any map opens a composer; the instruction is sent to the map's original Claude session with `--resume` and produces a new map linked to its base (same scope estimate + explicit click as a fresh run). `aiEngineerCoach.atlas.refineEnabled` now defaults to **true**.
+- **Replay → Atlas overlay** — *Show in Atlas* on a Replay session generates an overlay of the latest full map with that session's files highlighted (fresh map when none exists).
+- **Explain this session** — *Explain this session* on a Replay session asks Archify for a one-page explainer of what the session changed and why, with up to 12 of the session's diffs pinned as evidence. Gated by `aiEngineerCoach.atlas.explainEnabled` (default **true**).
+- **Editor → node (L2)** — *AI Engineer Coach: Show File in Atlas* (Explorer / editor-title context menu) opens the latest full map and selects the node whose verified sources include that file. Works because Archify ships stable node ids and a JSON source-evidence block (see the spike notes).
+
 ## 2.0.0 — Understand
 
 > Package renamed to `ai-engineer-coach-plus`; display name unchanged. First launch after upgrading re-parses everything once (`CACHE_VERSION` 9 → 10).

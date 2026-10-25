@@ -110,3 +110,17 @@ and the card recommends `sonnet` for a first map.
 4. Keep the §4.3 file hunt; also treat `.archify/**/<slug>.html` inside the repo as a
    "disobeyed" location that is moved out with a warning.
 5. 10-minute timeout is adequate for small/medium repos on sonnet.
+
+## 6. Follow-up: L3 refinement and L2 highlight (2.1.0)
+
+- `claude -p --resume <baseSessionId>` with cwd = the base map's run dir and the refinement
+  prompt produced `map-refined.html` beside the untouched `map.html` in **18 s / $0.53 / 9
+  turns** (sonnet) — the resumed session already holds the repository context, so refinement
+  is an order of magnitude cheaper than a fresh map. One `sed` call was denied; the model
+  recovered. Confirms the store layout (refinements share the base run dir so `--resume`
+  resolves the session) and the `atlas.refineEnabled` default flip.
+- Headless-browser check of the renderer shim on the real map: 17 sources detected from the
+  evidence JSON; the `highlightPath` hint selected the owning node (`#focus=worker`) and opened
+  its passport; clicking a passport source row posted
+  `{ type: 'atlas.open', path: 'src/core/parser.ts', line: 626 }`. L2 (editor → node) is
+  therefore client-side only — no Claude run.

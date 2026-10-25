@@ -32,7 +32,7 @@ type View = 'file' | 'session';
 
 interface ReplayState {
   view: View;
-  features: { atlas: boolean; replay: boolean; sessionChat: boolean; atlasRefine: boolean };
+  features: { atlas: boolean; replay: boolean; sessionChat: boolean; atlasRefine: boolean; atlasExplain: boolean };
   // file view
   path?: string;
   history?: ReplayFileHistory;
@@ -88,7 +88,7 @@ function parseHint(hint: string | undefined): { path?: string; sessionId?: strin
 export function renderReplay(content: HTMLElement, filter: DateFilter): void {
   const state: ReplayState = {
     view: 'file',
-    features: { atlas: true, replay: true, sessionChat: true, atlasRefine: false },
+    features: { atlas: true, replay: true, sessionChat: true, atlasRefine: true, atlasExplain: true },
     pickerQuery: '',
     payloads: new Map(),
     expanded: new Set(),
@@ -259,8 +259,9 @@ export function renderReplay(content: HTMLElement, filter: DateFilter): void {
           ${s ? html`<p class="studio-subtitle">${s.harness} · ${s.workspaceName} · ${s.requests.length} turn${s.requests.length === 1 ? '' : 's'} · ${fmtDate(s.creationDate)}</p>` : null}
         </div>
         <div class="replay-header-actions">
-          <button class="chat-btn-ghost" id="replay-show-atlas" disabled=${!state.features.atlasRefine}
-            title=${state.features.atlasRefine ? 'Highlight this session\u2019s files on the latest Atlas map' : 'Available in 2.1 — needs a cached full map and aiEngineerCoach.atlas.refineEnabled'}>Show in Atlas</button>
+          ${state.features.atlas ? html`<button class="chat-btn-ghost" id="replay-show-atlas" disabled=${!state.features.atlasRefine || !claude}
+            title=${!claude ? 'Overlays need the file list from a Claude session' : state.features.atlasRefine ? 'Generate an Atlas overlay with this session\u2019s files highlighted (uses Claude)' : 'Needs aiEngineerCoach.atlas.refineEnabled'}>Show in Atlas</button>` : null}
+          ${state.features.atlas && state.features.atlasExplain && claude ? html`<button class="chat-btn-ghost" id="replay-explain" title="Ask Archify for a one-page explainer of what this session changed and why (uses Claude)">Explain this session</button>` : null}
           <button class="chat-btn-ghost" id="replay-export" disabled=${!s}>Export Markdown</button>
           ${claude && state.features.sessionChat ? html`<button class="btn-primary" id="replay-continue">Continue in Session Chat</button>` : null}
         </div>
@@ -556,6 +557,11 @@ export function renderReplay(content: HTMLElement, filter: DateFilter): void {
     root.querySelector<HTMLElement>('#replay-show-atlas')?.addEventListener('click', () => {
       if (!state.features.atlasRefine || !state.detail) return;
       setNavHint(JSON.stringify({ overlaySessionId: state.detail.sessionId }));
+      navigateTo('atlas');
+    });
+    root.querySelector<HTMLElement>('#replay-explain')?.addEventListener('click', () => {
+      if (!state.features.atlasExplain || !state.detail) return;
+      setNavHint(JSON.stringify({ explainSessionId: state.detail.sessionId }));
       navigateTo('atlas');
     });
     for (const el of root.querySelectorAll<HTMLElement>('.replay-top-file')) {

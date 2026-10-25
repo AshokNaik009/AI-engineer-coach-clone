@@ -143,8 +143,8 @@ After install:
 
 | Page       | Description                                                                                                                                                                                                                                                  |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Atlas**  | An Archify-generated, source-backed architecture map of the current workspace, rendered inside VS Code. Shows a scope estimate before every run (you click _Generate_), streams progress, flags maps that are _N commits behind_, and exports a standalone HTML on request. Nothing is written into the repository unless you export |
-| **Replay** | Read-only AI edit history. Right-click any file → **Show AI History for File** to see every session and prompt that touched it; expand a row to see that edit's diff, read lazily from the session log. Open the session to see diffs under each turn, or export the transcript + diffs as Markdown |
+| **Atlas**  | An Archify-generated, source-backed architecture map of the current workspace, rendered inside VS Code. Shows a scope estimate before every run (you click _Generate_), streams progress, flags maps that are _N commits behind_, refines a map from a free-text instruction, and exports a standalone HTML on request. **Show File in Atlas** jumps from any file to its node. Nothing is written into the repository unless you export |
+| **Replay** | Read-only AI edit history. Right-click any file → **Show AI History for File** to see every session and prompt that touched it; expand a row to see that edit's diff, read lazily from the session log. Open the session to see diffs under each turn, export the transcript + diffs as Markdown, overlay the session's files on the Atlas map, or ask for a one-page _Explain this session_ |
 
 **Atlas needs:** the `claude` CLI (≥ 2), the Archify skill (`npx skills add tt-a1i/archify -g`, Node ≥ 22.2) and a Chrome/Chromium/Edge install for Archify's final render check. The page shows a matching card with an _Install_ button when something is missing. **Replay needs nothing** — it only reads `~/.claude/projects`; Codex and OpenCode sessions are listed too, without diffs.
 
@@ -154,7 +154,8 @@ After install:
 | `aiEngineerCoach.atlas.model`         | `""`     | `--model` for Atlas runs; `sonnet` mapped this repo for ~$0.50 vs ~$2 on opus |
 | `aiEngineerCoach.atlas.timeoutMs`     | `600000` | Kill a run after 10 minutes                                                 |
 | `aiEngineerCoach.atlas.maxMaps`       | `10`     | Maps kept per workspace                                                     |
-| `aiEngineerCoach.atlas.refineEnabled` | `false`  | Experimental: free-text refinement + Replay → Atlas overlays                |
+| `aiEngineerCoach.atlas.refineEnabled` | `true`   | Free-text refinement of a map + Replay → Atlas overlays                     |
+| `aiEngineerCoach.atlas.explainEnabled`| `true`   | "Explain this session" one-page explainer from a Replay session             |
 | `aiEngineerCoach.replay.enabled`      | `true`   | Show Replay and the context-menu command                                    |
 | `aiEngineerCoach.replay.maxDiffBytes` | `524288` | Largest edit payload rendered inline                                        |
 

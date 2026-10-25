@@ -208,6 +208,20 @@ export function activate(context: vscode.ExtensionContext) {
       DashboardPanel.createOrShow(context.extensionUri, context);
       DashboardPanel.current?.navigateToPage('replay', JSON.stringify({ path: uri.fsPath }));
     }),
+    // Understand → Atlas L2: editor/explorer → node on the latest full map.
+    vscode.commands.registerCommand('aiEngineerCoach.showFileInAtlas', async (resource?: vscode.Uri) => {
+      const uri = resource instanceof vscode.Uri ? resource : vscode.window.activeTextEditor?.document.uri;
+      runtimeDebug('extension', 'command-show-file-in-atlas', uri?.fsPath ?? '(none)');
+      if (!uri || uri.scheme !== 'file') {
+        void vscode.window.showInformationMessage('Open or select a file to locate it in Atlas.');
+        return;
+      }
+      await ready;
+      if (getPending().length > 0) await promptAndReload();
+      const { DashboardPanel } = await loadPanelModule();
+      DashboardPanel.createOrShow(context.extensionUri, context);
+      DashboardPanel.current?.showFileInAtlas(uri.fsPath);
+    }),
     vscode.commands.registerCommand('aiEngineerCoach.openAtlas', async () => {
       runtimeDebug('extension', 'command-open-atlas');
       await ready;

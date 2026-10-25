@@ -35,8 +35,8 @@ export function readUnderstandFeatures(): { atlas: boolean; replay: boolean; ses
     atlas: cfg.get<boolean>('atlas.enabled', true),
     replay: cfg.get<boolean>('replay.enabled', true),
     sessionChat: cfg.get<boolean>('sessionChat.enabled', true),
-    atlasRefine: cfg.get<boolean>('atlas.refineEnabled', false),
-    atlasExplain: cfg.get<boolean>('atlas.explainEnabled', false),
+    atlasRefine: cfg.get<boolean>('atlas.refineEnabled', true),
+    atlasExplain: cfg.get<boolean>('atlas.explainEnabled', true),
   };
 }
 
@@ -223,6 +223,13 @@ export class DashboardPanel {
     } else {
       this.pendingNavigate = message;
     }
+  }
+
+  /** L2: highlight the node that owns `filePath` on the latest full map, or
+   *  land on the Atlas page when no map exists yet. */
+  public showFileInAtlas(filePath: string): void {
+    const result = this.atlas.openLatestWithHighlight(filePath);
+    if (!result.ok) this.navigateToPage('atlas', JSON.stringify({ notice: result.error }));
   }
 
   private flushPendingNavigate(): void {

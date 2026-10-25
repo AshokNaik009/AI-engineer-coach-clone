@@ -81,8 +81,8 @@ export class AtlasHost {
       timeoutMs: cfg.get<number>('atlas.timeoutMs', DEFAULT_ATLAS_TIMEOUT_MS) || DEFAULT_ATLAS_TIMEOUT_MS,
       model: cfg.get<string>('atlas.model', '') || cfg.get<string>('sessionChat.model', '') || '',
       maxMaps: cfg.get<number>('atlas.maxMaps', 10) || 10,
-      refineEnabled: cfg.get<boolean>('atlas.refineEnabled', false),
-      explainEnabled: cfg.get<boolean>('atlas.explainEnabled', false),
+      refineEnabled: cfg.get<boolean>('atlas.refineEnabled', true),
+      explainEnabled: cfg.get<boolean>('atlas.explainEnabled', true),
       binPath: cfg.get<string>('sessionChat.binPath', 'claude') || 'claude',
     };
   }
@@ -233,6 +233,16 @@ export class AtlasHost {
   }
 
   /* ---------------- per-map actions ---------------- */
+
+  /** L2 (editor → node): open the newest full map with `filePath` highlighted. */
+  openLatestWithHighlight(filePath: string): { ok: boolean; error?: string } {
+    if (!this.config().enabled) return { ok: false, error: 'Atlas is disabled (aiEngineerCoach.atlas.enabled).' };
+    const root = this.workspaceRoot();
+    if (!root) return { ok: false, error: 'No workspace folder open.' };
+    const latest = this.store(root).list().find(m => m.kind === 'full');
+    if (!latest) return { ok: false, error: 'No Atlas map exists for this workspace yet — generate one first, then use "Show File in Atlas".' };
+    return AtlasMapPanel.show(latest, root, filePath);
+  }
 
   private openMap(params: Record<string, unknown>): unknown {
     const off = this.disabled();
