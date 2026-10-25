@@ -28,14 +28,14 @@ describe('injectNonce', () => {
 
 describe('buildRendererHtml', () => {
   it('replaces the shipped CSP with ours, keeps connect-src none, and prepends boot + shim', () => {
-    const out = buildRendererHtml(SAMPLE, { cspSource: 'vscode-webview://x', nonce: 'N2', mapId: 'm1', highlightPath: 'src\\x.ts' });
+    const out = buildRendererHtml(SAMPLE, { cspSource: 'vscode-webview://x', nonce: 'N2', mapId: 'm1', highlightPaths: ['src\\x.ts'] });
     const csps = out.match(/http-equiv="Content-Security-Policy" content="([^"]+)"/g) ?? [];
     expect(csps).toHaveLength(1);
     expect(csps[0]).toContain("script-src 'nonce-N2'");
     expect(csps[0]).toContain("connect-src 'none'");
     expect(csps[0]).toMatch(/script-src 'nonce-N2';/); // script-src never relaxes to unsafe-inline
     expect(out.indexOf('__atlasInit')).toBeLessThan(out.indexOf('window.Archify'));
-    expect(out).toContain('"highlightPath":"src/x.ts"');
+    expect(out).toContain('"highlightPaths":["src/x.ts"]');
     expect(out).toContain("'atlas.open'");
     const tags = out.match(/<script\b[^>]*>/g) ?? [];
     expect(tags.filter(t => !t.includes('nonce="N2"'))).toEqual([]);

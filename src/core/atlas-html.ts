@@ -36,7 +36,7 @@ export interface RendererHtmlOptions {
   cspSource: string;
   nonce: string;
   mapId: string;
-  highlightPath?: string;
+  highlightPaths?: string[];
 }
 
 export function buildRendererHtml(archifyHtml: string, opts: RendererHtmlOptions): string {
@@ -50,7 +50,7 @@ export function buildRendererHtml(archifyHtml: string, opts: RendererHtmlOptions
     "connect-src 'none'",
   ].join('; ');
   const shim = `<script nonce="${nonce}">${L1_SHIM}</script>`;
-  const boot = `<script nonce="${nonce}">window.__atlasInit=${JSON.stringify({ mapId: opts.mapId, highlightPath: opts.highlightPath ? opts.highlightPath.replaceAll('\\', '/') : null })};</script>`;
+  const boot = `<script nonce="${nonce}">window.__atlasInit=${JSON.stringify({ mapId: opts.mapId, highlightPaths: (opts.highlightPaths ?? []).map(p => p.replaceAll('\\', '/')) })};</script>`;
 
   let html = injectNonce(archifyHtml, nonce);
   // Strip any CSP Archify ships so ours is the only one, then add ours + the shim at the head start.
@@ -140,25 +140,75 @@ const L1_SHIM = String.raw`
     open(hit.path, hit.line);
   }, true);
 
-  function highlight(path) {
-    if (!path) return false;
+  function nodesFor(path) {
+    if (!path) return [];
     var key = String(path).replace(/\\/g, '/').toLowerCase();
     var ids = pathToNodes[key];
     if (!ids || !ids.length) {
-      // Try suffix match (absolute vs repo-relative).
-      Object.keys(pathToNodes).some(function (k) { if (key.endsWith(k) || k.endsWith(key)) { ids = pathToNodes[k]; return true; } return false; });
+      // Absolute vs repo-relative: accept a suffix match on a path boundary.
+      Object.keys(pathToNodes).some(function (k) {
+        if (key.endsWith('/' + k) || k.endsWith('/' + key) || key === k) { ids = pathToNodes[k]; return true; }
+        return false;
+      });
     }
-    if (!ids || !ids.length) return false;
-    var node = document.querySelector('[data-node-id="' + ids[0].replace(/"/g, '') + '"]');
-    if (!node) return false;
-    try { node.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) { /* ignore */ }
-    node.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    return ids || [];
+  }
+
+  function toast(text) {
+    var el = document.getElementById('atlas-shim-toast');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'atlas-shim-toast';
+      el.setAttribute('style', 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;font:12px system-ui,sans-serif;padding:6px 12px;border-radius:6px;background:rgba(20,20,20,.9);color:#eee;box-shadow:0 2px 8px rgba(0,0,0,.4);pointer-events:none;transition:opacity .3s;');
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.style.opacity = '1';
+    clearTimeout(el.__t);
+    el.__t = setTimeout(function () { el.style.opacity = '0'; }, 3500);
+  }
+
+  var MARK_ATTR = 'data-atlas-marked';
+  function clearMarks() {
+    Array.prototype.forEach.call(document.querySelectorAll('[' + MARK_ATTR + ']'), function (n) {
+      n.removeAttribute(MARK_ATTR);
+      n.style.filter = '';
+    });
+  }
+
+  /** Highlight one or many files: mark every owning node, select the first. */
+  function highlight(paths) {
+    var list = Array.isArray(paths) ? paths : [paths];
+    clearMarks();
+    var ids = [];
+    var missed = [];
+    list.forEach(function (p) {
+      var found = nodesFor(p);
+      if (!found.length) missed.push(p);
+      found.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); });
+    });
+    ids.forEach(function (id) {
+      var node = document.querySelector('[data-node-id="' + id.replace(/"/g, '') + '"]');
+      if (!node) return;
+      node.setAttribute(MARK_ATTR, '');
+      node.style.filter = 'drop-shadow(0 0 6px #e3b341) drop-shadow(0 0 2px #e3b341)';
+    });
+    if (!ids.length) {
+      toast(list.length === 1 ? 'No node in this map cites ' + String(list[0]).split('/').pop() : 'No node in this map cites these files');
+      return false;
+    }
+    var first = document.querySelector('[data-node-id="' + ids[0].replace(/"/g, '') + '"]');
+    if (first) {
+      try { first.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) { /* ignore */ }
+      first.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
+    if (list.length > 1) toast(ids.length + ' node' + (ids.length === 1 ? '' : 's') + ' touched by this session' + (missed.length ? ' · ' + missed.length + ' file' + (missed.length === 1 ? '' : 's') + ' not on the map' : ''));
     return true;
   }
 
   window.addEventListener('message', function (ev) {
     var msg = ev.data || {};
-    if (msg.type === 'atlas.highlight') highlight(msg.path);
+    if (msg.type === 'atlas.highlight') highlight(msg.paths || msg.path);
   });
 
   function init() {
@@ -174,7 +224,7 @@ const L1_SHIM = String.raw`
       document.body.appendChild(note);
     }
     var initData = window.__atlasInit || {};
-    if (initData.highlightPath) setTimeout(function () { highlight(initData.highlightPath); }, 400);
+    if (initData.highlightPaths && initData.highlightPaths.length) setTimeout(function () { highlight(initData.highlightPaths); }, 400);
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(init, 0); });
   else setTimeout(init, 0);

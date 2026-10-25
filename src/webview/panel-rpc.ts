@@ -49,7 +49,7 @@ import {
 } from '../core/claude-chat-process';
 import type { ClaudeChatProcessOptions } from '../core/claude-chat-process';
 import type { SessionChatEligibility, SessionChatTurn, SessionChatPermissionMode } from '../core/types/session-chat-types';
-import type { ReplayFileHit, ReplayFileHistory } from '../core/types/replay-types';
+import type { ReplayFileHit, ReplayFileHistory, ReplayOverview } from '../core/types/replay-types';
 import {
   buildFileChangeIndex,
   displayPathForKey,
@@ -61,9 +61,10 @@ import {
   type SessionsById,
 } from '../core/replay-index';
 import { readFileChange, DEFAULT_MAX_DIFF_BYTES } from '../core/replay-reader';
+import { buildReplayOverview } from '../core/replay-overview';
+import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
 import { errorResult, isString, isNumber, isOptionalString, isRecord } from './panel-shared';
 import { DSL_CHEATSHEET } from './dsl-cheatsheet';
-import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
 
 /**
  * Pick `reqs` or `sessions` based on scope and return them typed as
@@ -1523,6 +1524,19 @@ Explain why this session triggered the rule.`;
     }, config.maxDiffBytes);
   },
 
+  replayWorkspaceRoot: () => hostWorkspaceRoot(),
+
+  replayOverview: (_a, p, params) => {
+    const config = getReplayConfig();
+    if (!config.enabled) return errorResult('Replay is disabled (aiEngineerCoach.replay.enabled).');
+    const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : undefined;
+    // Workspace scoping is by path (the host's folder), not by the sidebar's
+    // workspaceId — sessions from several harnesses may map to the same folder.
+    const scoped = filter ? { fromDate: filter.fromDate, toDate: filter.toDate, harness: filter.harness } : undefined;
+    const root = isOptionalString(params?.workspaceRoot) && params.workspaceRoot ? params.workspaceRoot : undefined;
+    return getReplayOverview(p, root, scoped && Object.values(scoped).some(Boolean) ? scoped : undefined, config.maxDiffBytes);
+  },
+
   replayTopFiles: (_a, p, params) => {
     if (!getReplayConfig().enabled) return errorResult('Replay is disabled (aiEngineerCoach.replay.enabled).');
     const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : undefined;
@@ -1539,6 +1553,38 @@ Explain why this session triggered the rule.`;
 };
 
 /* ── Replay helpers ── */
+
+/** Overview results memoized per ParseResult + scope key (they read every pointer once). */
+const replayOverviewCache = new WeakMap<ParseResult, Map<string, Promise<ReplayOverview>>>();
+
+function getReplayOverview(parseResult: ParseResult, workspaceRoot: string | undefined, filter: DateFilter | undefined, maxDiffBytes: number): Promise<ReplayOverview> {
+  const key = JSON.stringify([workspaceRoot ?? '', filter ?? {}]);
+  let perResult = replayOverviewCache.get(parseResult);
+  if (!perResult) { perResult = new Map(); replayOverviewCache.set(parseResult, perResult); }
+  let pending = perResult.get(key);
+  if (!pending) {
+    const { index, byId } = getReplayIndex(parseResult);
+    const sessionIds = filter
+      ? new Set(parseResult.sessions.filter(s =>
+          (!filter.harness || s.harness === filter.harness)
+          && (inDateRange(s.lastMessageDate, filter) || inDateRange(s.creationDate, filter))).map(s => s.sessionId))
+      : undefined;
+    pending = buildReplayOverview(byId, index, { workspaceRoot, sessionIds, maxDiffBytes });
+    perResult.set(key, pending);
+  }
+  return pending;
+}
+
+function hostWorkspaceRoot(): { root?: string; name?: string } {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vscode = require('vscode') as typeof import('vscode');
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    return folder ? { root: folder.uri.fsPath, name: folder.name } : {};
+  } catch {
+    return {};
+  }
+}
 
 interface ReplayConfig {
   enabled: boolean;

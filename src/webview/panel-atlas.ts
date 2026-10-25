@@ -68,6 +68,7 @@ export class AtlasHost {
       case 'atlasExportMap': return this.exportMap(params);
       case 'atlasDeleteMap': return this.deleteMap(params);
       case 'atlasInstallSkill': return this.installSkill();
+      case 'atlasHighlight': return this.openLatestWithHighlight(readPaths(params));
       default: return errorResult(`Unknown method: ${method}`);
     }
   }
@@ -235,13 +236,13 @@ export class AtlasHost {
   /* ---------------- per-map actions ---------------- */
 
   /** L2 (editor → node): open the newest full map with `filePath` highlighted. */
-  openLatestWithHighlight(filePath: string): { ok: boolean; error?: string } {
+  openLatestWithHighlight(filePaths: string | string[]): { ok: boolean; error?: string } {
     if (!this.config().enabled) return { ok: false, error: 'Atlas is disabled (aiEngineerCoach.atlas.enabled).' };
     const root = this.workspaceRoot();
     if (!root) return { ok: false, error: 'No workspace folder open.' };
     const latest = this.store(root).list().find(m => m.kind === 'full');
-    if (!latest) return { ok: false, error: 'No Atlas map exists for this workspace yet — generate one first, then use "Show File in Atlas".' };
-    return AtlasMapPanel.show(latest, root, filePath);
+    if (!latest) return { ok: false, error: 'No Atlas map exists for this workspace yet — generate one first, then use "Show in Atlas".' };
+    return AtlasMapPanel.show(latest, root, Array.isArray(filePaths) ? filePaths : [filePaths]);
   }
 
   private openMap(params: Record<string, unknown>): unknown {
@@ -251,8 +252,7 @@ export class AtlasHost {
     const mapId = typeof params.mapId === 'string' ? params.mapId : '';
     const meta = root ? this.store(root).get(mapId) : undefined;
     if (!root || !meta) return { ok: false, error: 'Map not found.' };
-    const highlight = typeof params.highlightPath === 'string' ? params.highlightPath : undefined;
-    return AtlasMapPanel.show(meta, root, highlight);
+    return AtlasMapPanel.show(meta, root, readPaths(params));
   }
 
   private async exportMap(params: Record<string, unknown>): Promise<unknown> {
@@ -330,6 +330,14 @@ export class AtlasHost {
     }
     return excerpts;
   }
+}
+
+function readPaths(params: Record<string, unknown>): string[] {
+  const out: string[] = [];
+  if (typeof params.highlightPath === 'string') out.push(params.highlightPath);
+  if (Array.isArray(params.paths)) for (const p of params.paths) if (typeof p === 'string') out.push(p);
+  if (Array.isArray(params.highlightPaths)) for (const p of params.highlightPaths) if (typeof p === 'string') out.push(p);
+  return out.slice(0, 200);
 }
 
 function sanitizeParams(raw: Record<string, unknown>): AtlasGenerateParams {

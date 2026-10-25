@@ -66,3 +66,25 @@ export interface ReplayFileChangeParams {
   path?: string;
   tool?: FileChangeRef['tool'];
 }
+
+export type ReplayFileKind = 'created' | 'modified' | 'deleted';
+
+export interface ReplayOverviewFile {
+  path: string;
+  relPath: string;
+  kind: ReplayFileKind;
+  edits: number;
+  sessions: number;
+  added: number;
+  removed: number;
+  partial: boolean;
+  lastTs: number | null;
+  harnesses: string[];
+}
+
+export interface ReplayOverview {
+  workspaceRoot?: string;
+  files: ReplayOverviewFile[];
+  totals: { files: number; created: number; modified: number; deleted: number; added: number; removed: number; edits: number; sessions: number };
+  skippedReads: number;
+}

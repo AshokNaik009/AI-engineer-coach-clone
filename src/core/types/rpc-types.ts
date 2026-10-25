@@ -65,7 +65,7 @@ import type {
   SessionChatTurn,
   SessionChatPermissionMode,
 } from './session-chat-types';
-import type { FileChangePayload, ReplayFileChangeParams, ReplayFileHistory, ReplayTopFile } from './replay-types';
+import type { FileChangePayload, ReplayFileChangeParams, ReplayFileHistory, ReplayOverview, ReplayTopFile } from './replay-types';
 import type {
   AtlasEligibility,
   AtlasGenerateParams,
@@ -148,6 +148,10 @@ export interface RpcMethodMap {
   replayFileHistory: { params: { path: string; filter?: DateFilter }; result: ReplayFileHistory };
   replayFileChange: { params: ReplayFileChangeParams; result: FileChangePayload | ErrorResult };
   replayTopFiles: { params: { filter?: DateFilter; limit?: number } | undefined; result: ReplayTopFile[] };
+  /** Landing-page stats: every file AI touched (scoped to `workspaceRoot` when given) with kind + line counts. */
+  replayOverview: { params: { filter?: DateFilter; workspaceRoot?: string } | undefined; result: ReplayOverview };
+  /** The host's first workspace folder, so the webview can scope Replay to "this workspace". */
+  replayWorkspaceRoot: { params: undefined; result: { root?: string; name?: string } };
 }
 
 export type RpcMethodName = keyof RpcMethodMap;
@@ -193,7 +197,9 @@ export interface ExtensionMethodMap extends RpcMethodMap {
   /** Progress arrives via `onPush('atlas', …)` as `{ runId, event: AtlasProgressEvent }`. */
   atlasGenerate: { params: AtlasGenerateParams; result: { runId: string } | ErrorResult };
   atlasCancel: { params: { runId: string }; result: { ok: boolean } };
-  atlasOpenMap: { params: { mapId: string; highlightPath?: string }; result: { ok: boolean; error?: string } };
+  atlasOpenMap: { params: { mapId: string; highlightPaths?: string[] }; result: { ok: boolean; error?: string } };
+  /** Instant L2: open the latest full map and select the node(s) citing these files. No Claude run. */
+  atlasHighlight: { params: { paths: string[] }; result: { ok: boolean; error?: string } };
   atlasExportMap: { params: { mapId: string }; result: { path?: string; cancelled?: boolean; error?: string } };
   atlasDeleteMap: { params: { mapId: string }; result: { ok: boolean } };
   /** Opens a terminal running `npx skills add tt-a1i/archify -g`. */

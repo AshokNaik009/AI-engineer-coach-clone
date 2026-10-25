@@ -48,11 +48,11 @@ export class AtlasMapPanel {
   }
 
   /** Open (or reveal) the renderer for a map. */
-  static show(meta: AtlasMapMeta, workspaceRoot: string, highlightPath?: string): { ok: boolean; error?: string } {
+  static show(meta: AtlasMapMeta, workspaceRoot: string, highlightPaths: string[] = []): { ok: boolean; error?: string } {
     const existing = AtlasMapPanel.open.get(meta.id);
     if (existing) {
       existing.panel.reveal();
-      if (highlightPath) existing.highlight(highlightPath);
+      if (highlightPaths.length) existing.highlight(highlightPaths);
       return { ok: true };
     }
     let html: string;
@@ -64,7 +64,12 @@ export class AtlasMapPanel {
     const column = vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.One;
     const instance = new AtlasMapPanel(meta, workspaceRoot, column);
     AtlasMapPanel.open.set(meta.id, instance);
-    instance.panel.webview.html = buildRendererHtml(html, { cspSource: instance.panel.webview.cspSource, nonce: getNonce(), mapId: meta.id, highlightPath });
+    instance.panel.webview.html = buildRendererHtml(html, {
+      cspSource: instance.panel.webview.cspSource,
+      nonce: getNonce(),
+      mapId: meta.id,
+      highlightPaths: highlightPaths.map(p => toRepoRelative(p, workspaceRoot)),
+    });
     runtimeDebug('atlas-panel', 'opened', `${meta.id} ${meta.htmlPath}`);
     return { ok: true };
   }
@@ -73,8 +78,8 @@ export class AtlasMapPanel {
     for (const p of AtlasMapPanel.open.values()) p.panel.dispose();
   }
 
-  private highlight(filePath: string): void {
-    void this.panel.webview.postMessage({ type: 'atlas.highlight', path: toRepoRelative(filePath, this.workspaceRoot) });
+  private highlight(filePaths: string[]): void {
+    void this.panel.webview.postMessage({ type: 'atlas.highlight', paths: filePaths.map(p => toRepoRelative(p, this.workspaceRoot)) });
   }
 
   private onMessage(msg: unknown): void {
