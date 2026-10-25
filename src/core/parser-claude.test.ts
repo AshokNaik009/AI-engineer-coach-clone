@@ -499,3 +499,73 @@ describe('parseClaudeSessions', () => {
     fs.rmSync(cwd, { recursive: true, force: true });
   });
 });
+
+/* ---- Replay: file-change pointers + LoC from Edit/Write/MultiEdit ---- */
+
+function makeToolUseAssistant(blocks: object[], ts = '2025-06-15T10:00:02Z'): object {
+  return {
+    type: 'assistant',
+    timestamp: ts,
+    sessionId: 'sess-1',
+    message: {
+      role: 'assistant',
+      model: 'claude-sonnet-4',
+      content: blocks,
+      usage: { input_tokens: 500, output_tokens: 100 },
+    },
+  };
+}
+
+describe('parseClaudeSessions — Replay file-change pointers', () => {
+  it('records fileChanges pointers (0-based raw line numbers) for Edit, Write and MultiEdit', () => {
+    withProjectsDir('s.jsonl', [
+      makeUser('edit things'),                                                         // line 0
+      { type: 'queue-operation', garbage: true },                                      // line 1 (non-message, still counts)
+      makeToolUseAssistant([                                                           // line 2
+        { type: 'tool_use', id: 'tu-edit', name: 'Edit', input: { file_path: '/Users/me/proj/src/a.ts', old_string: 'a\nb', new_string: 'a\nb\nc\nd' } },
+      ]),
+      makeToolResultUser(),                                                            // line 3
+      makeToolUseAssistant([                                                           // line 4
+        { type: 'tool_use', id: 'tu-write', name: 'Write', input: { file_path: 'src/b.ts', content: 'line1\nline2\nline3' } },
+        { type: 'tool_use', id: 'tu-multi', name: 'MultiEdit', input: { file_path: '/Users/me/proj/src/c.ts', edits: [
+          { old_string: 'x', new_string: 'y\nz' },
+          { old_string: 'p', new_string: 'q' },
+        ] } },
+      ], '2025-06-15T10:00:03Z'),
+    ], (projectsDir) => {
+      const session = parseClaudeSessions(projectsDir)[0].sessions[0];
+      expect(session.requests).toHaveLength(1);
+      const req = session.requests[0];
+      expect(req.fileChanges).toEqual([
+        { path: '/Users/me/proj/src/a.ts', tool: 'Edit', lineNo: 2, toolUseId: 'tu-edit' },
+        { path: 'src/b.ts', tool: 'Write', lineNo: 4, toolUseId: 'tu-write' },
+        { path: '/Users/me/proj/src/c.ts', tool: 'MultiEdit', lineNo: 4, toolUseId: 'tu-multi', editCount: 2 },
+      ]);
+      expect(req.editedFiles).toEqual(['/Users/me/proj/src/a.ts', 'src/b.ts', '/Users/me/proj/src/c.ts']);
+      // LoC: Edit new_string (4) + Write content (3) + MultiEdit new_strings (2 + 1)
+      const loc = req.aiCode.reduce((sum, b) => sum + b.loc, 0);
+      expect(loc).toBe(10);
+    });
+  });
+
+  it('still accepts the legacy new_str / MultiEditTool field names', () => {
+    withProjectsDir('s.jsonl', [
+      makeUser('legacy edit'),
+      makeToolUseAssistant([
+        { type: 'tool_use', name: 'Edit', input: { file_path: '/Users/me/proj/x.ts', old_str: 'a', new_str: 'one\ntwo' } },
+        { type: 'tool_use', name: 'MultiEditTool', input: { file_path: '/Users/me/proj/y.ts', edits: [{ old_string: 'a', new_string: 'b' }] } },
+      ]),
+    ], (projectsDir) => {
+      const req = parseClaudeSessions(projectsDir)[0].sessions[0].requests[0];
+      expect(req.fileChanges?.map(c => c.tool)).toEqual(['Edit', 'MultiEdit']);
+      expect(req.aiCode.reduce((sum, b) => sum + b.loc, 0)).toBe(3);
+    });
+  });
+
+  it('omits fileChanges when no write tool ran', () => {
+    withProjectsDir('s.jsonl', [makeUser('hello'), makeAssistant('hi')], (projectsDir) => {
+      const req = parseClaudeSessions(projectsDir)[0].sessions[0].requests[0];
+      expect(req.fileChanges).toBeUndefined();
+    });
+  });
+});

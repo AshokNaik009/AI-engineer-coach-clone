@@ -17,13 +17,14 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Session, SessionRequest } from './types';
+import { FileChangeRef, Session, SessionRequest } from './types';
 import { assertTrustedPath, readFileSafe, createRequest, createSession, detectDevcontainerFromRequests, extractSkillNameFromPath } from './parser-shared';
 import { extractReasoningEffortFromModelId } from './helpers';
 import { warnCore } from './log';
 
 interface ClaudeContentBlock {
   type: string;
+  id?: string;
   text?: string;
   name?: string;
   input?: Record<string, unknown>;
@@ -58,6 +59,10 @@ interface ClaudeLine {
    *  `isSidechain: true`. Not used for billing math; surfaced for diagnostics. */
   agentId?: string;
   message?: ClaudeMessage;
+  /** 0-based physical line index in the .jsonl this record came from. Set by
+   *  `parseClaudeLines`; never present in the on-disk data. Replay pointers
+   *  (`FileChangeRef.lineNo`) are derived from it. */
+  rawLineNo?: number;
 }
 
 /** Allow-list of `entrypoint` values that indicate the user launched Claude
@@ -84,6 +89,7 @@ interface ClaudeAssistantData {
   editedFiles: string[];
   referencedFiles: string[];
   skillsUsed: string[];
+  fileChanges: FileChangeRef[];
   model: string;
   totalInputTokens: number;
   totalOutputTokens: number;
@@ -92,9 +98,32 @@ interface ClaudeAssistantData {
   assistantCount: number;
 }
 
-const CLAUDE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEditTool']);
+/** Claude Code's batch edit tool is `MultiEdit`; `MultiEditTool` is the
+ *  pre-1.0 name and still appears in old transcripts. Both map to 'MultiEdit'. */
+const CLAUDE_WRITE_TOOLS = new Set(['Write', 'Edit', 'MultiEdit', 'MultiEditTool']);
 const CLAUDE_READ_FILE_TOOLS = new Set(['Read', 'View']);
 const CLAUDE_READ_PATH_TOOLS = new Set(['Glob', 'LS', 'Find']);
+
+function canonicalWriteTool(name: string): FileChangeRef['tool'] | null {
+  if (name === 'Edit' || name === 'Write') return name;
+  if (name === 'MultiEdit' || name === 'MultiEditTool') return 'MultiEdit';
+  return null;
+}
+
+/** New text written by a write tool, for LoC counting. Claude's `Edit` uses
+ *  `new_string` (legacy transcripts: `new_str`); `Write` uses `content`;
+ *  `MultiEdit` carries `edits[].new_string`. */
+function extractWrittenCode(input: Record<string, unknown>): string[] {
+  if (typeof input.content === 'string') return [input.content];
+  if (typeof input.new_string === 'string') return [input.new_string];
+  if (typeof input.new_str === 'string') return [input.new_str];
+  if (Array.isArray(input.edits)) {
+    return input.edits
+      .map(e => (isRecord(e) && typeof e.new_string === 'string' ? e.new_string : null))
+      .filter((s): s is string => s !== null);
+  }
+  return [];
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -102,6 +131,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isClaudeContentBlock(value: unknown): value is ClaudeContentBlock {
   if (!isRecord(value) || typeof value.type !== 'string') return false;
+  if (value.id !== undefined && typeof value.id !== 'string') return false;
   if (value.text !== undefined && typeof value.text !== 'string') return false;
   if (value.name !== undefined && typeof value.name !== 'string') return false;
   if (value.input !== undefined && value.input !== null && !isRecord(value.input)) return false;
@@ -154,10 +184,15 @@ function parseClaudeLine(rawLine: string): ClaudeLine | null {
 
 function parseClaudeLines(raw: string): ClaudeLine[] {
   const lines: ClaudeLine[] = [];
-  for (const rawLine of raw.split('\n')) {
+  const rawLines = raw.split('\n');
+  for (let i = 0; i < rawLines.length; i++) {
+    const rawLine = rawLines[i];
     if (!rawLine.trim()) continue;
     const parsed = parseClaudeLine(rawLine);
-    if (parsed) lines.push(parsed);
+    if (parsed) {
+      parsed.rawLineNo = i;
+      lines.push(parsed);
+    }
   }
   return lines;
 }
@@ -218,7 +253,8 @@ function countClaudeImages(line: ClaudeLine): number {
 
 function applyClaudeToolBlock(
   block: ClaudeContentBlock,
-  data: Pick<ClaudeAssistantData, 'toolsUsed' | 'editedFiles' | 'referencedFiles' | 'skillsUsed'>,
+  data: Pick<ClaudeAssistantData, 'toolsUsed' | 'editedFiles' | 'referencedFiles' | 'skillsUsed' | 'fileChanges'>,
+  pointer?: { rawLineNo: number; sessionFile?: string },
 ): void {
   if (block.type !== 'tool_use' || !block.name) return;
 
@@ -232,7 +268,17 @@ function applyClaudeToolBlock(
   }
   if (CLAUDE_WRITE_TOOLS.has(block.name)) {
     const filePath = getInputPath(block.input, 'file_path');
-    if (filePath) data.editedFiles.push(filePath);
+    if (filePath) {
+      data.editedFiles.push(filePath);
+      const tool = canonicalWriteTool(block.name);
+      if (tool && pointer) {
+        const ref: FileChangeRef = { path: filePath, tool, lineNo: pointer.rawLineNo };
+        if (block.id) ref.toolUseId = block.id;
+        if (tool === 'MultiEdit' && Array.isArray(block.input?.edits)) ref.editCount = block.input.edits.length;
+        if (pointer.sessionFile) ref.sessionFile = pointer.sessionFile;
+        data.fileChanges.push(ref);
+      }
+    }
     return;
   }
 
@@ -248,7 +294,12 @@ function applyClaudeToolBlock(
   }
 }
 
-function collectClaudeAssistantData(lines: ClaudeLine[], startIndex: number, lastTs: number | null): ClaudeAssistantData {
+function collectClaudeAssistantData(
+  lines: ClaudeLine[],
+  startIndex: number,
+  lastTs: number | null,
+  sessionFile?: string,
+): ClaudeAssistantData {
   const data: ClaudeAssistantData = {
     nextIndex: startIndex,
     lastTs,
@@ -257,6 +308,7 @@ function collectClaudeAssistantData(lines: ClaudeLine[], startIndex: number, las
     editedFiles: [],
     referencedFiles: [],
     skillsUsed: [],
+    fileChanges: [],
     model: '',
     totalInputTokens: 0,
     totalOutputTokens: 0,
@@ -288,17 +340,17 @@ function collectClaudeAssistantData(lines: ClaudeLine[], startIndex: number, las
           data.assistantTexts.push(block.text);
           continue;
         }
-        applyClaudeToolBlock(block, data);
+        applyClaudeToolBlock(block, data, next.rawLineNo === undefined ? undefined : { rawLineNo: next.rawLineNo, sessionFile });
         // Extract code content from write tools so extractCodeBlocks() can count LoC.
-        // Claude Write uses `content`, Edit uses `new_str`.
+        // Claude Write uses `content`, Edit uses `new_string` (legacy `new_str`),
+        // MultiEdit uses `edits[].new_string`.
         if (block.type === 'tool_use' && block.name && CLAUDE_WRITE_TOOLS.has(block.name) && block.input) {
           const filePath = getInputPath(block.input, 'file_path');
-          const code = typeof block.input.content === 'string' ? block.input.content
-            : typeof block.input.new_str === 'string' ? block.input.new_str
-              : null;
-          if (code && filePath) {
+          if (filePath) {
             const ext = filePath.split('.').pop() || 'unknown';
-            data.assistantTexts.push(`\`\`\`${ext}\n${code}\n\`\`\``);
+            for (const code of extractWrittenCode(block.input)) {
+              if (code) data.assistantTexts.push(`\`\`\`${ext}\n${code}\n\`\`\``);
+            }
           }
         }
       }
@@ -617,6 +669,7 @@ function buildClaudeRequest(
     cacheReadTokens: assistantData.totalCacheReadTokens > 0 ? assistantData.totalCacheReadTokens : null,
     cacheWriteTokens: assistantData.totalCacheWriteTokens > 0 ? assistantData.totalCacheWriteTokens : null,
     reasoningEffort: extractReasoningEffortFromModelId(assistantData.model),
+    ...(assistantData.fileChanges.length > 0 ? { fileChanges: assistantData.fileChanges } : {}),
   });
 }
 
@@ -635,6 +688,10 @@ function parseClaudeSessionFile(filePath: string, wsId: string, wsName: string):
   if (lines.length === 0) return null;
 
   const sessionId = lines[0].sessionId || path.basename(filePath, '.jsonl');
+  // Subagent transcripts (`<sessionId>/subagents/agent-*.jsonl`) are merged
+  // into the parent session, so their Replay pointers must carry the file
+  // they actually live in; `<project>/<sessionId>.jsonl` is implied otherwise.
+  const pointerFile = path.basename(path.dirname(filePath)) === 'subagents' ? filePath : undefined;
   const requests: SessionRequest[] = [];
   let cwd = '';
   let firstTs: number | null = null;
@@ -656,7 +713,7 @@ function parseClaudeSessionFile(filePath: string, wsId: string, wsName: string):
     const userTs = getTimestamp(line.timestamp);
     ({ firstTs, lastTs } = updateClaudeTimestampRange(userTs, firstTs, lastTs));
 
-    const assistantData = collectClaudeAssistantData(lines, i + 1, lastTs);
+    const assistantData = collectClaudeAssistantData(lines, i + 1, lastTs, pointerFile);
     lastTs = assistantData.lastTs;
     requests.push(buildClaudeRequest(line, assistantData, userTs, requests.length));
     i = assistantData.nextIndex;

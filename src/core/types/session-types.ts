@@ -44,6 +44,23 @@ export interface TodoItem {
   status: 'not-started' | 'in-progress' | 'completed';
 }
 
+/** Pointer to a file-mutating tool call inside a Claude session .jsonl.
+ *  Replay reads the diff lazily from the line; no diff text is stored. */
+export interface FileChangeRef {
+  /** Path as recorded by the tool (absolute or cwd-relative). */
+  path: string;
+  tool: 'Edit' | 'Write' | 'MultiEdit';
+  /** 0-based raw line index in the session .jsonl (counts every physical line). */
+  lineNo: number;
+  /** For correlating the tool_result (success/failure). */
+  toolUseId?: string;
+  /** MultiEdit: number of edits in the batch. */
+  editCount?: number;
+  /** Set only when the pointer lives in a different file than
+   *  `<project>/<sessionId>.jsonl` (subagent transcripts merged into the parent). */
+  sessionFile?: string;
+}
+
 export interface SessionRequest {
   requestId: string;
   timestamp: number | null;
@@ -107,6 +124,9 @@ export interface SessionRequest {
    *              the harness (parser limitation that cannot be fixed
    *              from the source data) */
   endState?: 'pending' | 'errored' | 'no-data';
+  /** Replay: pointers to the Edit/Write/MultiEdit tool calls made during this
+   *  request (Claude harness only). Absent when no write tool ran. */
+  fileChanges?: FileChangeRef[];
 }
 
 export interface CodeBlock {

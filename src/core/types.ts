@@ -13,3 +13,5 @@ export * from './types/rule-types';
 export * from './types/rpc-types';
 export * from './types/prompt-studio-types';
 export * from './types/session-chat-types';
+export * from './types/replay-types';
+export * from './types/atlas-types';

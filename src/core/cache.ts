@@ -92,7 +92,8 @@ const CACHE_DIR = path.join(process.env.HOME || process.env.USERPROFILE || '', '
 const CACHE_FILE = path.join(CACHE_DIR, 'parsed.json');
 const CACHE_META = path.join(CACHE_DIR, 'meta.json');
 
-const CACHE_VERSION = 9;
+// 10: SessionRequest.fileChanges (Replay pointers) + Edit/MultiEdit LoC fixes.
+const CACHE_VERSION = 10;
 
 interface CacheMetaPayload {
   version: number;
