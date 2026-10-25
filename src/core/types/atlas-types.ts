@@ -32,6 +32,8 @@ export interface AtlasScopeEstimate {
   approxBytes: number;
   /** Thresholds: <300 → small, <2000 → medium, else large. */
   hint: 'small' | 'medium' | 'large';
+  /** Effective `atlas.model` (empty = CLI default); filled in by the host. */
+  model?: string;
 }
 
 export type AtlasMapKind = 'full' | 'session-overlay' | 'explainer';
