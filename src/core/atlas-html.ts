@@ -168,18 +168,36 @@ const L1_SHIM = String.raw`
     el.__t = setTimeout(function () { el.style.opacity = '0'; }, 3500);
   }
 
-  var MARK_ATTR = 'data-atlas-marked';
-  function clearMarks() {
-    Array.prototype.forEach.call(document.querySelectorAll('[' + MARK_ATTR + ']'), function (n) {
-      n.removeAttribute(MARK_ATTR);
-      n.style.filter = '';
-    });
+  /** Select node(s) the way the viewer itself does: Archify.focus (passport,
+   *  dimming, reach) + Archify.view.reveal (pan/zoom). Falls back to the
+   *  #focus= hash the viewer syncs from, then to a synthetic click. */
+  function selectNodes(ids, multi) {
+    var A = window.Archify || {};
+    var first = document.querySelector('[data-node-id="' + ids[0].replace(/"/g, '') + '"]');
+    if (first) { try { first.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) { /* ignore */ } }
+    if (multi && ids.length > 1 && A.focus && typeof A.focus.setMany === 'function') {
+      // A session's files: the viewer's multi-focus (dims everything else; no passport by design).
+      try { A.focus.setMany(ids, { toggle: false }); return; } catch (e) { /* fall through */ }
+    }
+    // One file: a real click on its primary node focuses it and opens the
+    // semantic passport (verified sources, reach, relations) - exactly what
+    // the user would get by clicking the node themselves.
+    if (first) {
+      first.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+      try { first.focus({ preventScroll: true }); } catch (e) { /* ignore */ }
+    }
+    var active = A.focus && typeof A.focus.active === 'function' ? A.focus.active() : null;
+    if (!active) {
+      try {
+        history.replaceState(null, '', location.pathname + location.search + '#focus=' + encodeURIComponent(ids[0]));
+        window.dispatchEvent(new HashChangeEvent('hashchange'));
+      } catch (e) { /* ignore */ }
+    }
   }
 
-  /** Highlight one or many files: mark every owning node, select the first. */
+  /** Highlight one file (primary node + passport) or many (multi-focus). */
   function highlight(paths) {
     var list = Array.isArray(paths) ? paths : [paths];
-    clearMarks();
     var ids = [];
     var missed = [];
     list.forEach(function (p) {
@@ -187,22 +205,13 @@ const L1_SHIM = String.raw`
       if (!found.length) missed.push(p);
       found.forEach(function (id) { if (ids.indexOf(id) < 0) ids.push(id); });
     });
-    ids.forEach(function (id) {
-      var node = document.querySelector('[data-node-id="' + id.replace(/"/g, '') + '"]');
-      if (!node) return;
-      node.setAttribute(MARK_ATTR, '');
-      node.style.filter = 'drop-shadow(0 0 6px #e3b341) drop-shadow(0 0 2px #e3b341)';
-    });
     if (!ids.length) {
       toast(list.length === 1 ? 'No node in this map cites ' + String(list[0]).split('/').pop() : 'No node in this map cites these files');
       return false;
     }
-    var first = document.querySelector('[data-node-id="' + ids[0].replace(/"/g, '') + '"]');
-    if (first) {
-      try { first.scrollIntoView({ block: 'center', inline: 'center' }); } catch (e) { /* ignore */ }
-      first.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
-    }
-    if (list.length > 1) toast(ids.length + ' node' + (ids.length === 1 ? '' : 's') + ' touched by this session' + (missed.length ? ' · ' + missed.length + ' file' + (missed.length === 1 ? '' : 's') + ' not on the map' : ''));
+    selectNodes(ids, list.length > 1);
+    if (list.length === 1 && ids.length > 1) toast(String(list[0]).split('/').pop() + ' is also cited by ' + (ids.length - 1) + ' other node' + (ids.length === 2 ? '' : 's'));
+    else if (missed.length) toast(missed.length + ' of ' + list.length + ' files are not cited by any node');
     return true;
   }
 
@@ -224,7 +233,15 @@ const L1_SHIM = String.raw`
       document.body.appendChild(note);
     }
     var initData = window.__atlasInit || {};
-    if (initData.highlightPaths && initData.highlightPaths.length) setTimeout(function () { highlight(initData.highlightPaths); }, 400);
+    if (initData.highlightPaths && initData.highlightPaths.length) {
+      // The viewer wires Archify.focus after its own init; wait for it (bounded).
+      var tries = 0;
+      (function attempt() {
+        var ready = window.Archify && window.Archify.focus && typeof window.Archify.focus.set === 'function';
+        if (ready || tries++ > 40) highlight(initData.highlightPaths);
+        else setTimeout(attempt, 100);
+      })();
+    }
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { setTimeout(init, 0); });
   else setTimeout(init, 0);
