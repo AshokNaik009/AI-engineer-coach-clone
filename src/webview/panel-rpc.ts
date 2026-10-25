@@ -36,10 +36,10 @@ import {
   serializeCalibration,
 } from '../core/metric-engine';
 import { compileNaturalLanguageRule } from '../core/rule-compiler';
-import type { SessionRequest, Session, StudioInput, StudioIssue, StudioProfile, StudioRecentPrompt } from '../core/types';
+import type { SessionRequest, Session, StudioInput, StudioIssue, StudioProfile, StudioRecentPrompt, FileChangeRef } from '../core/types';
 import { diagnosePrompt, assembleProfile, buildCost } from '../core/prompt-studio';
 import { improvePromptViaClaude } from '../core/claude-cli';
-import { continueClaudeSession, evaluateSessionChatEligibility } from '../core/claude-resume';
+import { continueClaudeSession, evaluateSessionChatEligibility, findClaudeSessionFile } from '../core/claude-resume';
 import {
   getOrCreateChatProcess,
   getChatProcess,
@@ -49,6 +49,18 @@ import {
 } from '../core/claude-chat-process';
 import type { ClaudeChatProcessOptions } from '../core/claude-chat-process';
 import type { SessionChatEligibility, SessionChatTurn, SessionChatPermissionMode } from '../core/types/session-chat-types';
+import type { ReplayFileHit, ReplayFileHistory } from '../core/types/replay-types';
+import {
+  buildFileChangeIndex,
+  displayPathForKey,
+  normalizeChangePath,
+  resolveHit,
+  sessionsById,
+  topEditedFiles,
+  type FileChangeIndex,
+  type SessionsById,
+} from '../core/replay-index';
+import { readFileChange, DEFAULT_MAX_DIFF_BYTES } from '../core/replay-reader';
 import { errorResult, isString, isNumber, isOptionalString, isRecord } from './panel-shared';
 import { DSL_CHEATSHEET } from './dsl-cheatsheet';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
@@ -1329,6 +1341,7 @@ Explain why this session triggered the rule.`;
   promptStudioImprove: async (_a, _p, params) => {
     const text = (isString(params?.text) ? params.text : '').slice(0, MAX_STUDIO_PROMPT_CHARS);
     if (!text.trim()) return errorResult('Empty prompt');
+    if (!claudeConsentGranted()) return errorResult(CONSENT_REQUIRED_MESSAGE);
     const issues = sanitizeStudioIssues(params?.issues);
     const profile = sanitizeStudioProfile(params?.profile);
     return improvePromptViaClaude({ text, issues, profile });
@@ -1348,6 +1361,7 @@ Explain why this session triggered the rule.`;
     const message = isString(params?.message) ? params.message : '';
     const failed = (error: string): SessionChatTurn => ({ reply: '', sessionId, error });
     if (!sessionId || !message.trim()) return failed('Missing session id or message.');
+    if (!claudeConsentGranted()) return failed(CONSENT_REQUIRED_MESSAGE);
     if (message.length > MAX_SESSION_CHAT_MESSAGE_CHARS) {
       return failed(`Message too long (${message.length.toLocaleString()} chars; limit ${MAX_SESSION_CHAT_MESSAGE_CHARS.toLocaleString()}).`);
     }
@@ -1374,6 +1388,7 @@ Explain why this session triggered the rule.`;
   sessionChatOpenLive: (_a, p, params) => {
     const sessionId = isString(params?.sessionId) ? params.sessionId : '';
     if (!sessionId) return { ok: false, error: 'Missing session id.' };
+    if (!claudeConsentGranted()) return { ok: false, error: CONSENT_REQUIRED_MESSAGE };
 
     const eligibility = computeSessionChatEligibility(p, sessionId, false);
     if (!eligibility.eligible || !eligibility.resolvedCwd) {
@@ -1395,7 +1410,7 @@ Explain why this session triggered the rule.`;
       if (subscribedProcesses.get(sessionId) !== proc) {
         subscribedProcesses.set(sessionId, proc);
         proc.onEvent((event) => {
-          liveChatPushSender?.({ kind: 'push', topic: 'sessionChat', sessionId, event });
+          liveChatPushSender?.({ type: 'push', topic: 'sessionChat', sessionId, event });
           if (event.kind === 'turn-end') {
             refreshSessionsTreeSafe();
           }
@@ -1434,7 +1449,156 @@ Explain why this session triggered the rule.`;
     subscribedProcesses.delete(sessionId);
     return { ok: true };
   },
+
+  /* ---- Understand → Replay (strictly read-only) ---- */
+
+  replayFileHistory: (_a, p, params) => {
+    if (!getReplayConfig().enabled) return errorResult('Replay is disabled (aiEngineerCoach.replay.enabled).');
+    const rawPath = isString(params?.path) ? params.path : '';
+    if (!rawPath) return errorResult('Missing path.');
+    const { index, byId } = getReplayIndex(p);
+    const key = normalizeChangePath(rawPath);
+    const allHits = index.get(key) ?? [];
+    const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : undefined;
+    const hits: ReplayFileHit[] = [];
+    for (const hit of allHits) {
+      const resolved = resolveHit(byId, hit);
+      if (!resolved) continue;
+      const { session, ref } = resolved;
+      if (filter?.workspaceId && session.workspaceId !== filter.workspaceId) continue;
+      if (filter?.harness && session.harness !== filter.harness) continue;
+      if (!inDateRange(hit.ts, filter)) continue;
+      const request = session.requests[hit.requestIdx];
+      const entry: ReplayFileHit = {
+        sessionId: hit.sessionId,
+        requestIdx: hit.requestIdx,
+        changeIdx: hit.changeIdx,
+        ts: hit.ts,
+        workspaceName: session.workspaceName,
+        harness: session.harness,
+        userPrompt: request.messageText.slice(0, 280),
+      };
+      if (ref) entry.ref = ref;
+      hits.push(entry);
+    }
+    const result: ReplayFileHistory = {
+      path: displayPathForKey(byId, key, allHits) ?? rawPath,
+      hits,
+      total: allHits.length,
+    };
+    return result;
+  },
+
+  replayFileChange: async (_a, p, params) => {
+    const config = getReplayConfig();
+    if (!config.enabled) return errorResult('Replay is disabled (aiEngineerCoach.replay.enabled).');
+    const sessionId = isString(params?.sessionId) ? params.sessionId : '';
+    const lineNo = isNumber(params?.lineNo) ? params.lineNo : -1;
+    if (!sessionId || lineNo < 0) return errorResult('Missing session id or line number.');
+    const session = p.sessions.find(s => s.sessionId === sessionId);
+    if (!session) return errorResult('stale-index');
+    if (session.harness !== 'Claude') return errorResult(`Diffs are not available for ${session.harness} sessions.`);
+
+    // Prefer the pointer we parsed: it knows the tool, id and (for subagent
+    // transcripts) the file the line actually lives in.
+    const toolUseId = isOptionalString(params?.toolUseId) ? params.toolUseId : undefined;
+    const pathHint = isOptionalString(params?.path) ? params.path : undefined;
+    let ref: FileChangeRef | undefined;
+    for (const request of session.requests) {
+      ref = request.fileChanges?.find(c => c.lineNo === lineNo
+        && (!toolUseId || c.toolUseId === toolUseId)
+        && (!pathHint || c.path === pathHint));
+      if (ref) break;
+    }
+    const tool = ref?.tool ?? (isReplayTool(params?.tool) ? params.tool : undefined);
+    if (!tool) return errorResult('stale-index');
+
+    const sessionFile = ref?.sessionFile ?? findClaudeSessionFile(sessionId);
+    if (!sessionFile) return errorResult('Session file not found under ~/.claude/projects.');
+    return readFileChange(sessionFile, {
+      lineNo,
+      tool,
+      toolUseId: ref?.toolUseId ?? toolUseId,
+      path: ref?.path ?? pathHint,
+    }, config.maxDiffBytes);
+  },
+
+  replayTopFiles: (_a, p, params) => {
+    if (!getReplayConfig().enabled) return errorResult('Replay is disabled (aiEngineerCoach.replay.enabled).');
+    const filter = isRecord(params?.filter) ? validateDateFilter(params.filter) : undefined;
+    const limit = isNumber(params?.limit) ? Math.max(1, Math.min(200, params.limit)) : 50;
+    const { index, byId } = getReplayIndex(p);
+    if (!filter) return topEditedFiles(byId, index, limit);
+    // Filtered view: rebuild a scoped index from the matching sessions only.
+    const scoped = p.sessions.filter(s =>
+      (!filter.workspaceId || s.workspaceId === filter.workspaceId)
+      && (!filter.harness || s.harness === filter.harness)
+      && (inDateRange(s.lastMessageDate, filter) || inDateRange(s.creationDate, filter)));
+    return topEditedFiles(sessionsById(scoped), buildFileChangeIndex(scoped), limit);
+  },
 };
+
+/* ── Replay helpers ── */
+
+interface ReplayConfig {
+  enabled: boolean;
+  maxDiffBytes: number;
+}
+
+function getReplayConfig(): ReplayConfig {
+  const defaults: ReplayConfig = { enabled: true, maxDiffBytes: DEFAULT_MAX_DIFF_BYTES };
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const vscode = require('vscode') as typeof import('vscode');
+    const cfg = vscode.workspace.getConfiguration('aiEngineerCoach.replay');
+    return {
+      enabled: cfg.get<boolean>('enabled', defaults.enabled),
+      maxDiffBytes: cfg.get<number>('maxDiffBytes', defaults.maxDiffBytes) || defaults.maxDiffBytes,
+    };
+  } catch {
+    return defaults;
+  }
+}
+
+function isReplayTool(value: unknown): value is FileChangeRef['tool'] {
+  return value === 'Edit' || value === 'Write' || value === 'MultiEdit';
+}
+
+function inDateRange(ts: number | null, filter: DateFilter | undefined): boolean {
+  if (!filter || (!filter.fromDate && !filter.toDate)) return true;
+  if (ts === null) return false;
+  if (filter.fromDate && ts < new Date(filter.fromDate).getTime()) return false;
+  if (filter.toDate && ts > new Date(filter.toDate).getTime() + 86_400_000) return false;
+  return true;
+}
+
+/** The inverted index is derived from the live ParseResult (external-harness
+ *  sessions bypass the disk cache) and memoized per result instance. */
+const replayIndexCache = new WeakMap<ParseResult, { index: FileChangeIndex; byId: SessionsById }>();
+
+function getReplayIndex(parseResult: ParseResult): { index: FileChangeIndex; byId: SessionsById } {
+  let cached = replayIndexCache.get(parseResult);
+  if (!cached) {
+    cached = { index: buildFileChangeIndex(parseResult.sessions), byId: sessionsById(parseResult.sessions) };
+    replayIndexCache.set(parseResult, cached);
+  }
+  return cached;
+}
+
+/* ── Unified Claude-powered consent (host-side enforcement, spec §5.1) ── */
+
+const CONSENT_REQUIRED_MESSAGE = 'Claude-powered features are not enabled yet — accept the consent card first.';
+
+/** Set by panel.ts; undefined (= not consented) in test contexts. */
+let claudeConsentProvider: (() => boolean) | undefined;
+
+export function setClaudeConsentProvider(fn: (() => boolean) | undefined): void {
+  claudeConsentProvider = fn;
+}
+
+function claudeConsentGranted(): boolean {
+  return claudeConsentProvider ? claudeConsentProvider() : false;
+}
 
 /* ── Live chat push channel ── */
 

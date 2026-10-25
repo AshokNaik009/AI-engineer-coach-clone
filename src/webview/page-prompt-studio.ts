@@ -13,6 +13,7 @@
 
 import { DateFilter, StudioDiagnosis, StudioIssue, StudioProfile, StudioRecentPrompt, StudioCost, ClaudeImproveResult } from '../core/types';
 import { rpc } from './shared';
+import { ensureClaudePoweredConsent } from './consent-card';
 import { html, render, ComponentChildren } from './render';
 
 interface StudioState {
@@ -161,6 +162,11 @@ function wireStudio(content: HTMLElement, filter: DateFilter, state: StudioState
     void (async () => {
       const diagnosis = await diagnose();
       if (!diagnosis) return;
+      // Improve spawns `claude -p` — gated by the unified Claude-powered consent (spec §5.1).
+      if (!(await ensureClaudePoweredConsent(els.suggestion))) {
+        render(html`<div class="studio-note">Improve needs Claude-powered features enabled. The diagnosis above is still local and free.</div>`, els.suggestion);
+        return;
+      }
       render(html`<div class="loading-spinner"></div><div class="studio-note">Improving your prompt…</div>`, els.suggestion);
       const res = await rpc<ClaudeImproveResult>('promptStudioImprove', {
         text: state.draftText,

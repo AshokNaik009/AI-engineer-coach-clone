@@ -113,6 +113,12 @@ export function activate(context: vscode.ExtensionContext) {
   setDefaultTrustStore(context.globalState);
   clearPending();
 
+  // §5.1 / §9.8: a Session Chat user who already consented must never see the
+  // unified Claude-powered consent card again. Runs before any panel renders.
+  const consentMigration = loadPanelModule()
+    .then(({ migrateClaudePoweredConsent }) => migrateClaudePoweredConsent(context.globalState))
+    .catch(err => { runtimeDebug('extension', 'consent-migration-error', String(err)); });
+
   const rulesPromise = loadAllRuleLayersAsync(workspaceRoot, trustGate).then(counts => {
     runtimeDebug('extension', 'rules-loaded',
       `builtin=${counts.builtin} personal=${counts.personal} project=${counts.project} pending=${getPending().length}` +
@@ -130,7 +136,7 @@ export function activate(context: vscode.ExtensionContext) {
     runtimeDebug('extension', 'metrics-load-error', String(err));
   });
 
-  const ready = Promise.all([rulesPromise, metricsPromise]);
+  const ready = Promise.all([rulesPromise, metricsPromise, consentMigration]);
 
   async function promptAndReload(): Promise<void> {
     const approved = await reviewPendingTrust(context);
@@ -185,6 +191,30 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand('aiEngineerCoach.refreshSessions', () => {
       runtimeDebug('extension', 'command-refresh-sessions');
       SessionsTreeProvider.instance?.refresh();
+    }),
+    // Understand → Replay: the only editor entry point (spec §6.5). Resolves
+    // the clicked resource, else the active editor, and deep-links the
+    // dashboard's Replay file view.
+    vscode.commands.registerCommand('aiEngineerCoach.showFileHistory', async (resource?: vscode.Uri) => {
+      const uri = resource instanceof vscode.Uri ? resource : vscode.window.activeTextEditor?.document.uri;
+      runtimeDebug('extension', 'command-show-file-history', uri?.fsPath ?? '(none)');
+      if (!uri || uri.scheme !== 'file') {
+        void vscode.window.showInformationMessage('Open or select a file to show its AI edit history.');
+        return;
+      }
+      await ready;
+      if (getPending().length > 0) await promptAndReload();
+      const { DashboardPanel } = await loadPanelModule();
+      DashboardPanel.createOrShow(context.extensionUri, context);
+      DashboardPanel.current?.navigateToPage('replay', JSON.stringify({ path: uri.fsPath }));
+    }),
+    vscode.commands.registerCommand('aiEngineerCoach.openAtlas', async () => {
+      runtimeDebug('extension', 'command-open-atlas');
+      await ready;
+      if (getPending().length > 0) await promptAndReload();
+      const { DashboardPanel } = await loadPanelModule();
+      DashboardPanel.createOrShow(context.extensionUri, context);
+      DashboardPanel.current?.navigateToPage('atlas');
     }),
     vscode.commands.registerCommand('aiEngineerCoach.reviewLocalRules', async () => {
       runtimeDebug('extension', 'command-review-trust');

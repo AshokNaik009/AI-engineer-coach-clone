@@ -9,7 +9,7 @@
  * CLI itself, so all analytics see the full conversation on the next reload.
  *
  * Guardrails encoded here:
- *   - one-time consent card (writes to session history + spends Claude usage)
+ *   - one-time Claude-powered consent card (shared with Atlas / Prompt Studio)
  *   - six distinct ineligible states with a copyable terminal fallback
  *   - "recently active" concurrent-writer guard with an explicit override
  *   - failed sends are never auto-retried (the failure may mean another
@@ -29,6 +29,7 @@ import type {
 import { consumeNavHint, getMatchedWorkspaceId } from './app';
 import { html, render, ComponentChildren } from './render';
 import { rpc, onPush } from './shared';
+import { hasClaudePoweredConsent, renderClaudeConsentCard } from './consent-card';
 
 interface LocalTurn {
   user: string;
@@ -134,14 +135,10 @@ export function renderSessionChat(content: HTMLElement, filter: DateFilter): voi
   const deepLinkId = consumeNavHint();
 
   void (async () => {
-    let consented = false;
-    try {
-      consented = (await rpc<{ consented: boolean }>('sessionChatConsent', {})).consented;
-    } catch { /* treat as not consented */ }
-    state.consented = consented;
+    // One consent for every Claude-powered feature (spec §5.1).
+    state.consented = await hasClaudePoweredConsent();
     if (!state.consented) {
-      renderConsentCard(root, () => {
-        void rpc('sessionChatConsent', { ack: true }).catch(() => { /* best effort */ });
+      renderClaudeConsentCard(root, () => {
         state.consented = true;
         void boot();
       });
@@ -642,21 +639,5 @@ export function renderSessionChat(content: HTMLElement, filter: DateFilter): voi
     }
 
     renderMain(els);
-  }
-
-  function renderConsentCard(container: HTMLElement, onAccept: () => void): void {
-    render(html`
-      <div class="chat-consent">
-        <h3>Before you continue sessions from here…</h3>
-        <p>This extension is read-only by default. Session Chat is the opt-in exception:</p>
-        <ul>
-          <li><strong>It writes.</strong> Every turn is appended by the Claude CLI to the session's history under <code>~/.claude/projects/</code> (forks create a new session file).</li>
-          <li><strong>It spends.</strong> Each turn replays the session transcript as input tokens and bills your Claude API key or subscription.</li>
-          <li><strong>No tools run.</strong> Replies are conversation-only (<code>--allowedTools ""</code>) in this version.</li>
-        </ul>
-        <button class="btn-primary" id="chat-consent-accept">I understand — continue</button>
-      </div>
-    `, container);
-    container.querySelector<HTMLButtonElement>('#chat-consent-accept')?.addEventListener('click', onAccept);
   }
 }

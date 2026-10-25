@@ -4,14 +4,24 @@
  *--------------------------------------------------------------------------------------------*/
 
 import * as vscode from 'vscode';
-import { getNonce } from './panel-shared';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
+import { getNonce } from './panel-shared';
 
 export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.Uri): string {
   const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'app.js'));
   const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'styles.css'));
   const nonce = getNonce();
-  const sessionChatEnabled = vscode.workspace.getConfiguration('aiEngineerCoach.sessionChat').get<boolean>('enabled', false);
+  const sessionChatEnabled = vscode.workspace.getConfiguration('aiEngineerCoach.sessionChat').get<boolean>('enabled', true);
+  const atlasEnabled = vscode.workspace.getConfiguration('aiEngineerCoach.atlas').get<boolean>('enabled', true);
+  const replayEnabled = vscode.workspace.getConfiguration('aiEngineerCoach.replay').get<boolean>('enabled', true);
+  // Disabled Understand modules stay visible (greyed + tooltip) — §2.6.
+  const understandLink = (page: string, enabled: boolean, label: string, settingLabel: string, icon: string): string => {
+    const cls = enabled ? '' : ' class="nav-disabled"';
+    const title = enabled ? '' : ` title="Enabled in Settings → AI Engineer Coach → ${settingLabel}"`;
+    return `<li><a href="#" data-page="${page}"${cls}${title}><span class="nav-icon">${icon}</span> ${label}</a></li>`;
+  };
+  const atlasIcon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="12" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M5.8 4.6L10 5M5.2 5.6l2 4.6M10.8 6.6L9 10.3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+  const replayIcon = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2.5 8a5.5 5.5 0 1 0 1.6-3.9" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2 2.5v3h3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/><path d="M8 5v3.2l2.2 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -41,6 +51,9 @@ export function getDashboardHtml(webview: vscode.Webview, extensionUri: vscode.U
       <li><a href="#" data-page="skills"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><circle cx="4" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="12" cy="4" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><circle cx="8" cy="13" r="2.5" stroke="currentColor" stroke-width="1.3" fill="none"/><line x1="4" y1="6.5" x2="8" y2="10.5" stroke="currentColor" stroke-width="1.2"/><line x1="12" y1="6.5" x2="8" y2="10.5" stroke="currentColor" stroke-width="1.2"/></svg></span> Skill Finder<span class="nav-badge" id="badge-skills"></span></a></li>
       <li><a href="#" data-page="config-health"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L1.5 4.5V11.5L8 15L14.5 11.5V4.5Z" stroke="currentColor" stroke-width="1.3" fill="none"/><path d="M8 5.5V10.5M5.5 8H10.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span> Context Health</a></li>
       <li><a href="#" data-page="level-up"><span class="nav-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1l2 5h5l-4 3.5 1.5 5L8 11.5 3.5 14.5 5 9.5 1 6h5z" stroke="currentColor" stroke-width="1.2" fill="none"/></svg></span> Level Up</a></li>
+      <li class="nav-group-header">Understand</li>
+      ${understandLink('atlas', atlasEnabled, 'Atlas', 'Atlas', atlasIcon)}
+      ${understandLink('replay', replayEnabled, 'Replay', 'Replay', replayIcon)}
     </ul>
     <div class="sidebar-filters">
       <div class="sidebar-filter">

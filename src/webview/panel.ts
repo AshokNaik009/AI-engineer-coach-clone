@@ -15,13 +15,81 @@ import { WebviewMessage } from '../core/types';
 import { panelCache } from './panel-cache';
 import { clearCatalogCache } from './panel-catalog';
 import { getDashboardHtml, getErrorHtml } from './panel-html';
-import { getRpcHandler, setLiveChatPushSender, closeAllChatProcesses } from './panel-rpc';
+import { getRpcHandler, setLiveChatPushSender, closeAllChatProcesses, setClaudeConsentProvider } from './panel-rpc';
 import { PanelRequestService } from './panel-request-service';
 import { DashboardSidebarProvider } from './panel-sidebar';
 import { SessionsTreeProvider } from './sidebar-sessions';
 import { isRequestMessage, postResponse, errorResult } from './panel-shared';
+import { AtlasHost } from './panel-atlas';
+import { CLAUDE_POWERED_CONSENT_KEY, hasClaudePoweredConsent } from './consent-state';
 
 export { DashboardSidebarProvider } from './panel-sidebar';
+
+export { CLAUDE_POWERED_CONSENT_KEY, hasClaudePoweredConsent, migrateClaudePoweredConsent } from './consent-state';
+
+/* ---- Understand feature flags (settings are kill-switches, §2.1) ---- */
+
+export function readUnderstandFeatures(): { atlas: boolean; replay: boolean; sessionChat: boolean; atlasRefine: boolean; atlasExplain: boolean } {
+  const cfg = vscode.workspace.getConfiguration('aiEngineerCoach');
+  return {
+    atlas: cfg.get<boolean>('atlas.enabled', true),
+    replay: cfg.get<boolean>('replay.enabled', true),
+    sessionChat: cfg.get<boolean>('sessionChat.enabled', true),
+    atlasRefine: cfg.get<boolean>('atlas.refineEnabled', false),
+    atlasExplain: cfg.get<boolean>('atlas.explainEnabled', false),
+  };
+}
+
+/** Resolve a (possibly relative) path against the first workspace folder,
+ *  refuse anything escaping it, and open it beside the dashboard. */
+export async function openWorkspaceFileBeside(rawPath: string, line?: number): Promise<{ ok: boolean; error?: string }> {
+  if (!rawPath) return { ok: false, error: 'Missing path.' };
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  const path = await import('path');
+  const fs = await import('fs');
+  let resolved: string | undefined;
+  if (path.isAbsolute(rawPath)) {
+    resolved = path.normalize(rawPath);
+  } else {
+    for (const folder of folders) {
+      const candidate = path.join(folder.uri.fsPath, rawPath);
+      if (fs.existsSync(candidate)) { resolved = candidate; break; }
+    }
+    resolved ??= folders[0] ? path.join(folders[0].uri.fsPath, rawPath) : undefined;
+  }
+  if (!resolved) return { ok: false, error: 'No workspace folder open.' };
+  if (!fs.existsSync(resolved)) return { ok: false, error: `File not found: ${resolved}` };
+  // Replay paths come from session logs and may legitimately point at other
+  // repos; only *relative* resolution is confined to the workspace. Absolute
+  // paths are still refused if they contain traversal segments.
+  if (rawPath.split(/[\\/]/).includes('..')) return { ok: false, error: 'Path traversal refused.' };
+  try {
+    const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resolved));
+    const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false, preview: true });
+    if (line && line > 0) {
+      const pos = new vscode.Position(Math.min(line - 1, doc.lineCount - 1), 0);
+      editor.selection = new vscode.Selection(pos, pos);
+      editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** The only disk write Replay performs: an explicit save dialog. */
+export async function saveTextFileViaDialog(content: string, defaultName: string): Promise<{ path?: string; cancelled?: boolean; error?: string }> {
+  const folder = vscode.workspace.workspaceFolders?.[0]?.uri;
+  const defaultUri = folder ? vscode.Uri.joinPath(folder, defaultName) : undefined;
+  const target = await vscode.window.showSaveDialog({ defaultUri, filters: { Markdown: ['md'], 'All files': ['*'] }, saveLabel: 'Export' });
+  if (!target) return { cancelled: true };
+  try {
+    await vscode.workspace.fs.writeFile(target, Buffer.from(content, 'utf-8'));
+    return { path: target.fsPath };
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : String(err) };
+  }
+}
 
 export class DashboardPanel {
   private static instance: DashboardPanel | undefined;
@@ -31,6 +99,7 @@ export class DashboardPanel {
   private readonly extensionUri: vscode.Uri;
   private readonly requestService: PanelRequestService;
   private readonly globalState: vscode.Memento;
+  private readonly atlas: AtlasHost;
   private readonly disposables: vscode.Disposable[] = [];
 
   private analyzer: Analyzer | undefined;
@@ -63,11 +132,14 @@ export class DashboardPanel {
     }, null, this.disposables);
     this.panel.webview.onDidReceiveMessage((msg: unknown) => this.handleMessage(msg), null, this.disposables);
 
-    setLiveChatPushSender((msg) => {
+    const push = (msg: Record<string, unknown>): void => {
       if (!this.disposed) {
         try { this.panel.webview.postMessage(msg); } catch { /* disposed */ }
       }
-    });
+    };
+    setLiveChatPushSender(push);
+    setClaudeConsentProvider(() => hasClaudePoweredConsent(this.globalState));
+    this.atlas = new AtlasHost(context, push, () => this.parseResult);
 
     void this.loadData();
   }
@@ -316,9 +388,47 @@ export class DashboardPanel {
       return true;
     }
 
-    // Session Chat consent — globalState-backed, independent of parsed data
-    if (msg.method === 'sessionChatConsent') {
+    // Claude-powered consent — globalState-backed, independent of parsed data.
+    // `sessionChatConsent` is the pre-2.0 name; both read/write the unified key.
+    if (msg.method === 'claudePoweredConsent' || msg.method === 'sessionChatConsent') {
       this.handleConsentMessage(msg);
+      return true;
+    }
+
+    if (msg.method === 'understandFeatures') {
+      postResponse(this.panel.webview, msg.id, readUnderstandFeatures());
+      return true;
+    }
+
+    if (msg.method === 'openWorkspaceFile') {
+      const params = (msg.params ?? {}) as Record<string, unknown>;
+      void openWorkspaceFileBeside(
+        typeof params.path === 'string' ? params.path : '',
+        typeof params.line === 'number' ? params.line : undefined,
+      ).then(result => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, result); } catch { /* disposed */ } });
+      return true;
+    }
+
+    if (msg.method === 'saveTextFile') {
+      const params = (msg.params ?? {}) as Record<string, unknown>;
+      void saveTextFileViaDialog(
+        typeof params.content === 'string' ? params.content : '',
+        typeof params.defaultName === 'string' ? params.defaultName : 'export.md',
+      ).then(result => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, result); } catch { /* disposed */ } });
+      return true;
+    }
+
+    if (msg.method === 'reloadData') {
+      postResponse(this.panel.webview, msg.id, { ok: true });
+      this.reload(true);
+      return true;
+    }
+
+    if (msg.method.startsWith('atlas')) {
+      void this.atlas.handle(msg.method, (msg.params ?? {}) as Record<string, unknown>).then(
+        result => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, result); } catch { /* disposed */ } },
+        error => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, errorResult(error instanceof Error ? error.message : 'Atlas error')); } catch { /* disposed */ } },
+      );
       return true;
     }
 
@@ -376,18 +486,17 @@ export class DashboardPanel {
   }
 
   private static readonly BUDGET_STATE_KEY = 'modelBudgets';
-  private static readonly SESSION_CHAT_CONSENT_KEY = 'sessionChatConsented';
 
   private handleConsentMessage(msg: Extract<WebviewMessage, { type: 'request' }>): void {
     const ack = (msg.params as Record<string, unknown> | undefined)?.ack === true;
     if (ack) {
-      this.globalState.update(DashboardPanel.SESSION_CHAT_CONSENT_KEY, true).then(
+      this.globalState.update(CLAUDE_POWERED_CONSENT_KEY, true).then(
         () => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, { consented: true }); } catch { /* disposed */ } },
         () => { if (!this.disposed) try { postResponse(this.panel.webview, msg.id, errorResult('Failed to save consent')); } catch { /* disposed */ } },
       );
       return;
     }
-    const consented = this.globalState.get<boolean>(DashboardPanel.SESSION_CHAT_CONSENT_KEY, false);
+    const consented = hasClaudePoweredConsent(this.globalState);
     if (!this.disposed) try { postResponse(this.panel.webview, msg.id, { consented }); } catch { /* disposed */ }
   }
 
@@ -408,7 +517,9 @@ export class DashboardPanel {
     runtimeDebug('panel', 'dispose');
     this.disposed = true;
     closeAllChatProcesses();
+    this.atlas.dispose();
     setLiveChatPushSender(undefined);
+    setClaudeConsentProvider(undefined);
     DashboardPanel.instance = undefined;
     this.panel.dispose();
     for (const disposable of this.disposables) disposable.dispose();

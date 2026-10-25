@@ -99,6 +99,7 @@ const cssSources = [
   'src/webview/styles-pages.css',
   'src/webview/styles-skills.css',
   'src/webview/styles-learning.css',
+  'src/webview/styles-understand.css',
 ];
 
 function bundleCss() {

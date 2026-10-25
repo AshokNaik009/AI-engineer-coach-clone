@@ -23,6 +23,8 @@ import { renderRulePlayground } from './page-rule-playground';
 import { renderImageGallery } from './page-image-gallery';
 import { renderPromptStudio } from './page-prompt-studio';
 import { renderSessionChat } from './page-session-chat';
+import { renderReplay } from './page-replay';
+import { renderAtlas } from './page-atlas';
 import { FF_TOKEN_REPORTING_ENABLED } from '../core/constants';
 
 function normalizePageForFeatureFlags(page: string): string {
@@ -465,6 +467,8 @@ document.addEventListener('click', (e) => {
   const link = target.closest<HTMLElement>('[data-page]');
   if (link) {
     e.preventDefault();
+    // Disabled Understand modules stay visible but inert (tooltip explains why).
+    if (link.classList.contains('nav-disabled')) return;
     const hint = link.dataset.navHint;
     if (hint) setNavHint(hint);
     const page = link.dataset.page;
@@ -663,6 +667,8 @@ function renderPage(page: string): void {
     case 'image-gallery': withErrorBoundary('Image Gallery', content, () => renderImageGallery(content, currentFilter)); break;
     case 'prompt-studio': withErrorBoundary('Prompt Studio', content, () => renderPromptStudio(content, currentFilter)); break;
     case 'session-chat': withErrorBoundary('Session Chat', content, () => renderSessionChat(content, currentFilter)); break;
+    case 'atlas': withErrorBoundary('Atlas', content, () => renderAtlas(content, currentFilter)); break;
+    case 'replay': withErrorBoundary('Replay', content, () => renderReplay(content, currentFilter)); break;
     default: render(html`<p>Unknown page</p>`, content);
   }
 }

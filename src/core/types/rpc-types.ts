@@ -65,6 +65,14 @@ import type {
   SessionChatTurn,
   SessionChatPermissionMode,
 } from './session-chat-types';
+import type { FileChangePayload, ReplayFileChangeParams, ReplayFileHistory, ReplayTopFile } from './replay-types';
+import type {
+  AtlasEligibility,
+  AtlasGenerateParams,
+  AtlasMapMeta,
+  AtlasScopeEstimate,
+  AtlasStaleness,
+} from './atlas-types';
 
 /* RPC method map: method name -> { params, result } */
 export interface RpcMethodMap {
@@ -136,6 +144,10 @@ export interface RpcMethodMap {
   sessionChatSendLive: { params: { sessionId: string; message: string }; result: { accepted: boolean } };
   sessionChatInterrupt: { params: { sessionId: string }; result: { ok: boolean } };
   sessionChatCloseLive: { params: { sessionId: string }; result: { ok: boolean } };
+  /* ---- Understand → Replay (read-only AI edit history) ---- */
+  replayFileHistory: { params: { path: string; filter?: DateFilter }; result: ReplayFileHistory };
+  replayFileChange: { params: ReplayFileChangeParams; result: FileChangePayload | ErrorResult };
+  replayTopFiles: { params: { filter?: DateFilter; limit?: number } | undefined; result: ReplayTopFile[] };
 }
 
 export type RpcMethodName = keyof RpcMethodMap;
@@ -161,8 +173,31 @@ export interface ExtensionMethodMap extends RpcMethodMap {
   getSdlcGitHubData: { params: Record<string, unknown>; result: unknown };
   saveModelBudgets: { params: { budgets: Record<string, number> }; result: { ok: boolean } };
   loadModelBudgets: { params: Record<string, unknown> | undefined; result: Record<string, number> };
-  /** Get (no params) or persist (`ack: true`) the one-time Session Chat consent. */
+  /** Get (no params) or persist (`ack: true`) the one-time consent for every
+   *  Claude-powered feature (Session Chat, Atlas, Prompt Studio Improve).
+   *  `sessionChatConsent` is kept as an alias for older webview bundles. */
+  claudePoweredConsent: { params: { ack?: boolean } | undefined; result: { consented: boolean } };
   sessionChatConsent: { params: { ack?: boolean } | undefined; result: { consented: boolean } };
+  /** Which Understand modules are enabled (settings are kill-switches). */
+  understandFeatures: { params: undefined; result: { atlas: boolean; replay: boolean; sessionChat: boolean; atlasRefine: boolean; atlasExplain: boolean } };
+  /** Open a workspace file at a line beside the dashboard (Replay → editor). */
+  openWorkspaceFile: { params: { path: string; line?: number }; result: { ok: boolean; error?: string } };
+  /** Save text via a native save dialog (Replay → Export Markdown). The only disk write Replay performs. */
+  saveTextFile: { params: { content: string; defaultName: string }; result: { path?: string; cancelled?: boolean; error?: string } };
+  /** Force a full re-parse (same as the Reload Data command). */
+  reloadData: { params: undefined; result: { ok: boolean } };
+  /* ---- Understand → Atlas (host-side: globalStorage, terminals, dialogs) ---- */
+  atlasEligibility: { params: undefined; result: AtlasEligibility };
+  atlasEstimate: { params: undefined; result: AtlasScopeEstimate | ErrorResult };
+  atlasListMaps: { params: undefined; result: { maps: AtlasMapMeta[]; staleness: Record<string, AtlasStaleness>; activeRunId?: string } };
+  /** Progress arrives via `onPush('atlas', …)` as `{ runId, event: AtlasProgressEvent }`. */
+  atlasGenerate: { params: AtlasGenerateParams; result: { runId: string } | ErrorResult };
+  atlasCancel: { params: { runId: string }; result: { ok: boolean } };
+  atlasOpenMap: { params: { mapId: string; highlightPath?: string }; result: { ok: boolean; error?: string } };
+  atlasExportMap: { params: { mapId: string }; result: { path?: string; cancelled?: boolean; error?: string } };
+  atlasDeleteMap: { params: { mapId: string }; result: { ok: boolean } };
+  /** Opens a terminal running `npx skills add tt-a1i/archify -g`. */
+  atlasInstallSkill: { params: undefined; result: { ok: boolean } };
 }
 
 export type ExtensionMethodName = keyof ExtensionMethodMap;
