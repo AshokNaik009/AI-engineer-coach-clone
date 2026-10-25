@@ -363,63 +363,73 @@ export function renderAtlas(content: HTMLElement, _filter: DateFilter): void {
 
   /* ---------------- wiring ---------------- */
 
+  /** The consent card renders imperatively into its slot after each paint;
+   *  it carries its own (fresh) listeners because the slot is re-rendered. */
   function wire(): void {
     const consentSlot = root.querySelector<HTMLElement>('#atlas-consent-slot');
-    if (consentSlot) {
+    if (consentSlot && !consentSlot.dataset.wired) {
+      consentSlot.dataset.wired = '1';
       renderClaudeConsentCard(consentSlot, () => { void refresh(); }, () => {
         render(html`<div class="chat-ineligible"><h3>Claude-powered features are off</h3><p>You can enable them any time from this page or Session Chat. Existing maps stay available below.</p></div>`, consentSlot);
       });
-    }
-    root.querySelector<HTMLElement>('#atlas-refresh')?.addEventListener('click', () => { state.flash = undefined; void refresh(); });
-    root.querySelector<HTMLElement>('#atlas-install-skill')?.addEventListener('click', () => { void rpc('atlasInstallSkill').catch(() => {}); });
-    root.querySelector<HTMLElement>('#atlas-new')?.addEventListener('click', () => { void prepare({ kind: 'full' }); });
-    root.querySelector<HTMLElement>('#atlas-generate')?.addEventListener('click', () => { void generate(); });
-    root.querySelector<HTMLElement>('#atlas-cancel-pending')?.addEventListener('click', () => { state.pending = undefined; paint(); });
-    root.querySelector<HTMLElement>('#atlas-dismiss-error')?.addEventListener('click', () => { state.lastError = undefined; paint(); });
-    for (const el of root.querySelectorAll<HTMLElement>('[data-open]')) {
-      el.addEventListener('click', () => { void rpc<{ ok: boolean; error?: string }>('atlasOpenMap', { mapId: el.dataset.open }).then(r => { if (!r.ok && r.error) { state.lastError = { message: r.error }; paint(); } }).catch(err => { state.lastError = { message: describeError(err) }; paint(); }); });
-    }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-regen]')) {
-      el.addEventListener('click', () => { void prepare({ kind: 'full' }); });
-    }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-refine]')) {
-      el.addEventListener('click', () => { if (el.hasAttribute('disabled')) return; state.refineFor = el.dataset.refine; paint(); root.querySelector<HTMLInputElement>('#atlas-refine-input')?.focus(); });
-    }
-    root.querySelector<HTMLElement>('#atlas-refine-close')?.addEventListener('click', () => { state.refineFor = undefined; paint(); });
-    const refineGo = root.querySelector<HTMLElement>('#atlas-refine-go');
-    const refineInput = root.querySelector<HTMLInputElement>('#atlas-refine-input');
-    const submitRefine = (): void => {
-      const instruction = refineInput?.value.trim();
-      if (!instruction || !refineGo) return;
-      const baseMapId = refineGo.dataset.map;
-      state.refineFor = undefined;
-      void prepare({ kind: 'full', baseMapId, instruction });
-    };
-    refineGo?.addEventListener('click', submitRefine);
-    refineInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submitRefine(); });
-    for (const el of root.querySelectorAll<HTMLElement>('[data-export]')) {
-      el.addEventListener('click', () => {
-        void rpc<{ path?: string; cancelled?: boolean; error?: string }>('atlasExportMap', { mapId: el.dataset.export }).then(r => {
-          if (r.path) state.flash = `Exported to ${r.path}`;
-          else if (r.error) state.lastError = { message: r.error };
-          paint();
-        }).catch(err => { state.lastError = { message: describeError(err) }; paint(); });
-      });
-    }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-delete]')) {
-      el.addEventListener('click', () => { void rpc('atlasDeleteMap', { mapId: el.dataset.delete }).then(() => refresh()).catch(() => refresh()); });
     }
     wireProgress();
   }
 
   function wireProgress(): void {
-    root.querySelector<HTMLElement>('#atlas-cancel-run')?.addEventListener('click', () => {
-      if (!state.run) return;
-      void rpc('atlasCancel', { runId: state.run.runId }).catch(() => {});
-    });
     const log = root.querySelector<HTMLElement>('#atlas-log');
     if (log) log.scrollTop = log.scrollHeight;
   }
+
+  function submitRefine(): void {
+    const refineGo = root.querySelector<HTMLElement>('#atlas-refine-go');
+    const instruction = root.querySelector<HTMLInputElement>('#atlas-refine-input')?.value.trim();
+    if (!instruction || !refineGo) return;
+    state.refineFor = undefined;
+    void prepare({ kind: 'full', baseMapId: refineGo.dataset.map, instruction });
+  }
+
+  /* Event delegation: Preact reuses DOM nodes across paints, so per-element
+   * listeners would stack up. One root listener, bound once per activation. */
+  root.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const button = target.closest<HTMLElement>('button');
+    if (!button || button.hasAttribute('disabled')) return;
+    const d = button.dataset;
+    if (d.open) {
+      void rpc<{ ok: boolean; error?: string }>('atlasOpenMap', { mapId: d.open })
+        .then(r => { if (!r.ok && r.error) { state.lastError = { message: r.error }; paint(); } })
+        .catch(err => { state.lastError = { message: describeError(err) }; paint(); });
+      return;
+    }
+    if (d.regen) { void prepare({ kind: 'full' }); return; }
+    if (d.refine) { state.refineFor = d.refine; paint(); root.querySelector<HTMLInputElement>('#atlas-refine-input')?.focus(); return; }
+    if (d.export) {
+      void rpc<{ path?: string; cancelled?: boolean; error?: string }>('atlasExportMap', { mapId: d.export }).then(r => {
+        if (r.path) state.flash = `Exported to ${r.path}`;
+        else if (r.error) state.lastError = { message: r.error };
+        paint();
+      }).catch(err => { state.lastError = { message: describeError(err) }; paint(); });
+      return;
+    }
+    if (d.delete) { void rpc('atlasDeleteMap', { mapId: d.delete }).then(() => refresh()).catch(() => refresh()); return; }
+    switch (button.id) {
+      case 'atlas-refresh': state.flash = undefined; void refresh(); break;
+      case 'atlas-install-skill': void rpc('atlasInstallSkill').catch(() => {}); break;
+      case 'atlas-new': void prepare({ kind: 'full' }); break;
+      case 'atlas-generate': void generate(); break;
+      case 'atlas-cancel-pending': state.pending = undefined; paint(); break;
+      case 'atlas-dismiss-error': state.lastError = undefined; paint(); break;
+      case 'atlas-refine-close': state.refineFor = undefined; paint(); break;
+      case 'atlas-refine-go': submitRefine(); break;
+      case 'atlas-cancel-run': if (state.run) void rpc('atlasCancel', { runId: state.run.runId }).catch(() => {}); break;
+      default: break;
+    }
+  });
+
+  root.addEventListener('keydown', (e) => {
+    if ((e.target as HTMLElement).id === 'atlas-refine-input' && e.key === 'Enter') submitRefine();
+  });
 }
 
 function parseHint(hint: string | undefined): { overlaySessionId?: string; explainSessionId?: string; notice?: string } {

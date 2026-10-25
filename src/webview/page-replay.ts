@@ -508,88 +508,76 @@ export function renderReplay(content: HTMLElement, filter: DateFilter): void {
       <div id="replay-flash" class="chat-banner chat-banner-info" hidden></div>
       ${state.view === 'file' ? renderFileView() : renderSessionView()}
     `, root);
-    wire();
   }
 
-  function wire(): void {
-    for (const el of root.querySelectorAll<HTMLElement>('[data-toggle]')) {
-      el.addEventListener('click', (e) => {
-        if ((e.target as HTMLElement).closest('button')) return;
-        void toggle(el.dataset.toggle || '');
-      });
+  /* Event delegation: Preact reuses DOM nodes across paints, so per-element
+   * listeners would stack up (one click → N opens). One root listener, bound
+   * once per page activation, dispatches on ids / data-* attributes. */
+  root.addEventListener('click', (e) => {
+    const target = e.target as HTMLElement;
+    const hit = <T extends HTMLElement>(sel: string): T | null => target.closest<T>(sel);
+
+    const openPath = hit('[data-open-path]');
+    if (openPath) {
+      e.stopPropagation();
+      void rpc('openWorkspaceFile', { path: openPath.dataset.openPath || '' }).catch(() => {});
+      return;
     }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-open-session]')) {
-      el.addEventListener('click', () => { void openSession(el.dataset.openSession || ''); });
+    const showContent = hit('[data-show-content]');
+    if (showContent) {
+      const body = showContent.closest('.replay-write')?.querySelector<HTMLElement>('.replay-write-body');
+      if (body) { body.hidden = !body.hidden; showContent.textContent = body.hidden ? 'Show content' : 'Hide content'; }
+      return;
     }
-    for (const el of root.querySelectorAll<HTMLElement>('[data-continue]')) {
-      el.addEventListener('click', () => {
-        setNavHint(el.dataset.continue);
-        navigateTo('session-chat');
-      });
+    const openSess = hit('[data-open-session]');
+    if (openSess) { void openSession(openSess.dataset.openSession || ''); return; }
+    const cont = hit('[data-continue]');
+    if (cont) { setNavHint(cont.dataset.continue); navigateTo('session-chat'); return; }
+    const topFile = hit('.replay-top-file');
+    if (topFile) { void openFile(topFile.dataset.path); return; }
+
+    const button = hit('button');
+    switch (button?.id) {
+      case 'replay-open-file': void rpc('openWorkspaceFile', { path: state.history?.path || state.path || '' }).catch(() => {}); return;
+      case 'replay-continue': setNavHint(state.sessionId); navigateTo('session-chat'); return;
+      case 'replay-reload': void rpc('reloadData').catch(() => {}); return;
+      case 'replay-back': void openFile(state.path); return;
+      case 'replay-pick-another': void openFile(undefined); return;
+      case 'replay-export': void exportMarkdown(); return;
+      case 'replay-picker-go': void openFile(state.pickerQuery.trim()); return;
+      case 'replay-show-atlas':
+        if (state.features.atlasRefine && state.detail) { setNavHint(JSON.stringify({ overlaySessionId: state.detail.sessionId })); navigateTo('atlas'); }
+        return;
+      case 'replay-explain':
+        if (state.features.atlasExplain && state.detail) { setNavHint(JSON.stringify({ explainSessionId: state.detail.sessionId })); navigateTo('atlas'); }
+        return;
+      default: break;
     }
-    root.querySelector<HTMLElement>('#replay-continue')?.addEventListener('click', () => {
-      setNavHint(state.sessionId);
-      navigateTo('session-chat');
-    });
-    for (const el of root.querySelectorAll<HTMLElement>('[data-open-path]')) {
-      el.addEventListener('click', (e) => {
-        e.stopPropagation();
-        void rpc('openWorkspaceFile', { path: el.dataset.openPath || '' }).catch(() => {});
-      });
-    }
-    root.querySelector<HTMLElement>('#replay-open-file')?.addEventListener('click', () => {
-      void rpc('openWorkspaceFile', { path: state.history?.path || state.path || '' }).catch(() => {});
-    });
-    for (const el of root.querySelectorAll<HTMLElement>('[data-show-content]')) {
-      el.addEventListener('click', () => {
-        const body = el.closest('.replay-write')?.querySelector<HTMLElement>('.replay-write-body');
-        if (!body) return;
-        body.hidden = !body.hidden;
-        el.textContent = body.hidden ? 'Show content' : 'Hide content';
-      });
-    }
-    root.querySelector<HTMLElement>('#replay-reload')?.addEventListener('click', () => {
-      void rpc('reloadData').catch(() => {});
-    });
-    root.querySelector<HTMLElement>('#replay-back')?.addEventListener('click', () => { void openFile(state.path); });
-    root.querySelector<HTMLElement>('#replay-pick-another')?.addEventListener('click', () => { void openFile(undefined); });
-    root.querySelector<HTMLElement>('#replay-export')?.addEventListener('click', () => { void exportMarkdown(); });
-    root.querySelector<HTMLElement>('#replay-show-atlas')?.addEventListener('click', () => {
-      if (!state.features.atlasRefine || !state.detail) return;
-      setNavHint(JSON.stringify({ overlaySessionId: state.detail.sessionId }));
-      navigateTo('atlas');
-    });
-    root.querySelector<HTMLElement>('#replay-explain')?.addEventListener('click', () => {
-      if (!state.features.atlasExplain || !state.detail) return;
-      setNavHint(JSON.stringify({ explainSessionId: state.detail.sessionId }));
-      navigateTo('atlas');
-    });
-    for (const el of root.querySelectorAll<HTMLElement>('.replay-top-file')) {
-      el.addEventListener('click', () => { void openFile(el.dataset.path); });
-    }
-    const picker = root.querySelector<HTMLInputElement>('#replay-picker-input');
-    if (picker) {
-      picker.addEventListener('input', () => {
-        state.pickerQuery = picker.value;
-        const list = root.querySelector<HTMLElement>('.replay-top-files');
-        if (!list) return;
-        // Re-render just the list to keep focus in the input.
-        const q = state.pickerQuery.toLowerCase();
-        const files = (state.topFiles ?? []).filter(f => !q || f.path.toLowerCase().includes(q)).slice(0, 40);
-        render(html`${files.map(f => html`
-          <div class="replay-top-file" data-path=${f.path} title=${f.path}>
-            <span class="replay-top-name">${basename(f.path)}</span>
-            <span class="replay-top-dir">${f.path}</span>
-            <span class="replay-top-counts">${f.edits} edit${f.edits === 1 ? '' : 's'} · ${f.sessions} session${f.sessions === 1 ? '' : 's'}</span>
-          </div>`)}`, list);
-        for (const el of list.querySelectorAll<HTMLElement>('.replay-top-file')) {
-          el.addEventListener('click', () => { void openFile(el.dataset.path); });
-        }
-      });
-      picker.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && picker.value.trim()) void openFile(picker.value.trim());
-      });
-    }
-    root.querySelector<HTMLElement>('#replay-picker-go')?.addEventListener('click', () => { void openFile(state.pickerQuery.trim()); });
-  }
+    if (button) return; // other buttons never toggle rows
+
+    const toggleEl = hit('[data-toggle]');
+    if (toggleEl) void toggle(toggleEl.dataset.toggle || '');
+  });
+
+  root.addEventListener('input', (e) => {
+    const picker = e.target as HTMLInputElement;
+    if (picker.id !== 'replay-picker-input') return;
+    state.pickerQuery = picker.value;
+    const list = root.querySelector<HTMLElement>('.replay-top-files');
+    if (!list) return;
+    // Re-render just the list to keep focus in the input.
+    const q = state.pickerQuery.toLowerCase();
+    const files = (state.topFiles ?? []).filter(f => !q || f.path.toLowerCase().includes(q)).slice(0, 40);
+    render(html`${files.map(f => html`
+      <div class="replay-top-file" data-path=${f.path} title=${f.path}>
+        <span class="replay-top-name">${basename(f.path)}</span>
+        <span class="replay-top-dir">${f.path}</span>
+        <span class="replay-top-counts">${f.edits} edit${f.edits === 1 ? '' : 's'} · ${f.sessions} session${f.sessions === 1 ? '' : 's'}</span>
+      </div>`)}`, list);
+  });
+
+  root.addEventListener('keydown', (e) => {
+    const picker = e.target as HTMLInputElement;
+    if (picker.id === 'replay-picker-input' && e.key === 'Enter' && picker.value.trim()) void openFile(picker.value.trim());
+  });
 }

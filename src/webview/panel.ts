@@ -65,7 +65,9 @@ export async function openWorkspaceFileBeside(rawPath: string, line?: number): P
   if (rawPath.split(/[\\/]/).includes('..')) return { ok: false, error: 'Path traversal refused.' };
   try {
     const doc = await vscode.workspace.openTextDocument(vscode.Uri.file(resolved));
-    const editor = await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false, preview: true });
+    // Reuse an editor that already shows this file; otherwise open beside the dashboard.
+    const existing = vscode.window.visibleTextEditors.find(ed => ed.document.uri.toString() === doc.uri.toString());
+    const editor = await vscode.window.showTextDocument(doc, { viewColumn: existing?.viewColumn ?? vscode.ViewColumn.Beside, preserveFocus: false, preview: true });
     if (line && line > 0) {
       const pos = new vscode.Position(Math.min(line - 1, doc.lineCount - 1), 0);
       editor.selection = new vscode.Selection(pos, pos);
