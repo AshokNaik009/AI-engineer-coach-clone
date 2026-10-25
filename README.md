@@ -1,8 +1,8 @@
 <h1 align="center">AI Engineer Coach</h1>
 
 <p align="center">
-<strong>better agentic engineering.</strong><br>
-Analyze your AI coding assistant usage — any harness, one dashboard.
+<strong>Understand your codebase and how AI changed it.</strong><br>
+An Archify knowledge graph, AI edit history with diffs, and coaching analytics for Claude Code, Codex, Copilot and more.
 </p>
 
 <p align="center">
@@ -28,6 +28,8 @@ https://github.com/user-attachments/assets/9f0239bf-20e0-459f-b137-17cce0edd1b2
 
 AI Engineer Coach reads your local AI session logs and turns them into actionable insights — no data leaves your machine.
 
+- **Understand your codebase** -- **Atlas** generates a source-linked architecture map of the open workspace with the [Archify](https://github.com/tt-a1i/archify) skill; click any reference to jump to the file and line
+- **Understand what AI changed** -- **Replay** is git blame for AI: for any file, every session and prompt that edited it, with per-turn diffs reconstructed from your local Claude Code transcripts
 - **Track progress** -- practice scores, weekly trends, daily activity charts
 - **Detect anti-patterns** -- 45 rules across prompt quality, session hygiene, code review, tool mastery, and context management
 - **Measure output** -- AI-generated code volume by language, workspace, model, and harness
@@ -135,6 +137,27 @@ After install:
 
 ## Pages
 
+### Understand
+
+<sub>Personal-fork features — not part of upstream <a href="https://github.com/microsoft/AI-Engineering-Coach">microsoft/AI-Engineering-Coach</a>. See <a href="#credits--attribution">Credits &amp; Attribution</a>.</sub>
+
+| Page       | Description                                                                                                                                                                                                                                                  |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Atlas**  | An Archify-generated, source-backed architecture map of the current workspace, rendered inside VS Code. Shows a scope estimate before every run (you click _Generate_), streams progress, flags maps that are _N commits behind_, and exports a standalone HTML on request. Nothing is written into the repository unless you export |
+| **Replay** | Read-only AI edit history. Right-click any file → **Show AI History for File** to see every session and prompt that touched it; expand a row to see that edit's diff, read lazily from the session log. Open the session to see diffs under each turn, or export the transcript + diffs as Markdown |
+
+**Atlas needs:** the `claude` CLI (≥ 2), the Archify skill (`npx skills add tt-a1i/archify -g`, Node ≥ 22.2) and a Chrome/Chromium/Edge install for Archify's final render check. The page shows a matching card with an _Install_ button when something is missing. **Replay needs nothing** — it only reads `~/.claude/projects`; Codex and OpenCode sessions are listed too, without diffs.
+
+| Setting                               | Default  | Description                                                                 |
+| ------------------------------------- | -------- | --------------------------------------------------------------------------- |
+| `aiEngineerCoach.atlas.enabled`       | `true`   | Show Atlas (greyed in the nav when off)                                     |
+| `aiEngineerCoach.atlas.model`         | `""`     | `--model` for Atlas runs; `sonnet` mapped this repo for ~$0.50 vs ~$2 on opus |
+| `aiEngineerCoach.atlas.timeoutMs`     | `600000` | Kill a run after 10 minutes                                                 |
+| `aiEngineerCoach.atlas.maxMaps`       | `10`     | Maps kept per workspace                                                     |
+| `aiEngineerCoach.atlas.refineEnabled` | `false`  | Experimental: free-text refinement + Replay → Atlas overlays                |
+| `aiEngineerCoach.replay.enabled`      | `true`   | Show Replay and the context-menu command                                    |
+| `aiEngineerCoach.replay.maxDiffBytes` | `524288` | Largest edit payload rendered inline                                        |
+
 ### Observe
 
 | Page               | Description                                                                           |
@@ -179,17 +202,17 @@ After install:
 
 Continue any locally stored Claude Code session directly from the dashboard: pick a session, type a message, and Claude's reply is appended to the same `~/.claude` session history — so all existing analytics keep seeing the full conversation.
 
-**Opt-in, off by default.** The extension remains read-only by default; Session Chat is an explicit opt-in exception. When enabled:
+**Shown by default since 2.0, but inert until you opt in.** Nothing spawns the `claude` CLI until you accept the one-time **Claude-powered features** consent card (shared with Atlas and Prompt Studio's _Improve_). When used:
 
 - It writes **only** to your local `~/.claude` session history, and only via the official `claude` CLI (`claude -p --resume`)
 - Each turn spends your Claude usage (API credits or subscription quota)
 - Telemetry posture is unchanged — still zero
 
-Enable it with the `aiEngineerCoach.sessionChat.enabled` setting. A **Sessions** tree view then appears in the sidebar (Claude sessions grouped by project, newest first — click one to continue it in the dashboard), and the **Session Chat** page offers a fork toggle ("Continue as branch") to branch into a new session instead of appending to the original.
+Hide it with the `aiEngineerCoach.sessionChat.enabled` setting. While on, a **Sessions** tree view appears in the sidebar (Claude sessions grouped by project, newest first — click one to continue it in the dashboard), and the **Session Chat** page offers a fork toggle ("Continue as branch") to branch into a new session instead of appending to the original.
 
 | Setting                                 | Default     | Description                                          |
 | --------------------------------------- | ----------- | ---------------------------------------------------- |
-| `aiEngineerCoach.sessionChat.enabled`   | `false`     | Master switch for the feature                        |
+| `aiEngineerCoach.sessionChat.enabled`   | `true`      | Kill-switch for the feature (consent still required) |
 | `aiEngineerCoach.sessionChat.binPath`   | `"claude"`  | Path to the Claude Code CLI                          |
 | `aiEngineerCoach.sessionChat.timeoutMs` | `120000`    | Per-turn timeout in milliseconds                     |
 | `aiEngineerCoach.sessionChat.model`     | `""`        | Model override; empty inherits your CLI configuration |
@@ -198,10 +221,10 @@ Enable it with the `aiEngineerCoach.sessionChat.enabled` setting. A **Sessions**
 
 ## Privacy
 
-- **Read-only by default** — the extension never modifies your session files; the only exception is the opt-in [Session Chat](#session-chat-session-continuation) feature (default off), which appends to `~/.claude` session history via the official `claude` CLI
+- **Read-only until you opt in to Claude-powered features. Zero telemetry.** The extension never modifies your session files or your repository. Session Chat, Atlas and Prompt Studio's _Improve_ spawn the official `claude` CLI only after you accept a one-time consent card; Session Chat appends to `~/.claude` session history, Atlas writes generated HTML to extension storage (never the repo unless you _Export_), Replay writes nothing except an explicit _Export Markdown_
 - **Local analysis** — all parsing and analytics run entirely on your machine
 - **No proprietary telemetry** — the extension does not phone home or collect usage data
-- **Optional AI features** — some features (rule compiler, skill finder, context review) use the VS Code built-in Copilot language model API when explicitly invoked by the user; Session Chat uses your Claude Code CLI account and spends your Claude usage
+- **Optional AI features** — some features (rule compiler, skill finder, context review) use the VS Code built-in Copilot language model API when explicitly invoked by the user; Session Chat, Atlas and Prompt Studio Improve use your Claude Code CLI account and spend your Claude usage
 
 ---
 
@@ -227,7 +250,9 @@ This repository is a personal fork/clone of the original **[AI Engineer Coach](h
 - **Original authors:** Microsoft Corporation and contributors
 - **License:** MIT — Copyright (c) Microsoft Corporation (see [LICENSE](LICENSE))
 
-All credit for the original design, architecture, and implementation belongs to the upstream authors. This fork contains personal modifications and experiments (e.g. Prompt Studio, Session Chat) and is **not** affiliated with, sponsored by, or endorsed by Microsoft.
+All credit for the original design, architecture, and implementation belongs to the upstream authors. This fork contains personal modifications and experiments (Understand → Atlas and Replay, Prompt Studio, Session Chat) and is **not** affiliated with, sponsored by, or endorsed by Microsoft.
+
+Atlas maps are produced by **[Archify](https://github.com/tt-a1i/archify)** (MIT, © tt-a1i), an agent skill that turns repository evidence into validated, standalone HTML diagrams. Atlas only orchestrates the skill through your own `claude` CLI; the rendering, validation and viewer are Archify's.
 
 ## License
 

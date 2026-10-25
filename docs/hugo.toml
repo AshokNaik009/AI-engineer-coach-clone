@@ -52,3 +52,8 @@ canonifyURLs   = true
     name       = "Level Up"
     url        = "/level-up/"
     weight     = 60
+  [[menu.main]]
+    identifier = "understand"
+    name       = "Understand"
+    url        = "/understand/"
+    weight     = 70

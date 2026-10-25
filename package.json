@@ -1,8 +1,8 @@
 {
-  "name": "ai-engineer-coach",
+  "name": "ai-engineer-coach-plus",
   "displayName": "AI Engineer Coach",
-  "description": "Analyze your AI coding assistant usage across VS Code, Xcode, Claude, Codex, and OpenCode. Read-only, zero telemetry.",
-  "version": "0.1.0",
+  "description": "Understand your codebase and how AI changed it. Archify knowledge graph, AI edit history with diffs, and coaching analytics for Claude Code, Codex, Copilot and more. Read-only until you opt in to Claude-powered features; zero telemetry.",
+  "version": "2.0.0",
   "publisher": "ai-engineer-coach",
   "author": {
     "name": "Sanjay Singh, Joy Distelbrink, Tamas Boncz, Aymen Furter"
@@ -21,7 +21,8 @@
   },
   "categories": [
     "Other",
-    "Visualization"
+    "Visualization",
+    "Education"
   ],
   "keywords": [
     "copilot",
@@ -31,7 +32,12 @@
     "codex",
     "opencode",
     "productivity",
-    "github"
+    "github",
+    "archify",
+    "knowledge-graph",
+    "architecture",
+    "history",
+    "diff"
   ],
   "activationEvents": [
     "onCommand:aiEngineerCoach.open",
